@@ -120,9 +120,11 @@
   <li><b>右鍵拖曳</b>　旋轉視角</li>
   <li><b>滾輪</b>　拉近拉遠（朝游標位置）</li>
   <li><b>Shift + 拖曳</b>　平移</li>
+  <li><b>左鍵點一下標本</b>　輕推</li>
 </ul>
 <div class="tray" role="group" aria-label="檢視控制">
   <button id="btn-reset" type="button">重設視角</button>
+  <button id="btn-drop" type="button">重新拋落</button>
   <button id="btn-spin" type="button" aria-pressed="false">自動旋轉</button>
   <button id="btn-bg" type="button">桌面：紫絨</button>
   <button id="btn-lights" type="button" aria-pressed="true" aria-controls="lights">光源設定</button>
@@ -153,13 +155,17 @@
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
 } }
 </script>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { HorizontalBlurShader } from 'three/addons/shaders/HorizontalBlurShader.js';
+import { VerticalBlurShader } from 'three/addons/shaders/VerticalBlurShader.js';
+import * as CANNON from 'cannon-es';
 
 /* ------------------------------------------------------------------ *
  *  Shell parameters (planispiral, involute, ribbed, keeled)
@@ -480,7 +486,8 @@ const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 
 const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 60);
-const HOME = { pos: new THREE.Vector3(0.45, 2.75, 2.85), target: new THREE.Vector3(-0.1, -0.1, -0.05) };
+const FLOOR_Y = -0.45;
+const HOME = { pos: new THREE.Vector3(0.45, 2.75, 2.85), target: new THREE.Vector3(0, -0.2, 0) };
 camera.position.copy(HOME.pos);
 
 /* ------------------------------------------------------------------ *
@@ -604,19 +611,143 @@ function build() {
   // embryonic chamber plugging the centre of the spiral
   const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 24, 16), new THREE.MeshStandardMaterial({ color: 0x1b1210, roughness: 0.9 }));
   group.add(shell, cap, core);
-  group.rotation.x = -Math.PI / 2;          // lie flat, face up
-  scene.add(group);
-  group.updateMatrixWorld(true);
-  const floorY = new THREE.Box3().setFromObject(shell).min.y - 0.004;
+  shellMesh = shell;
 
   const cloth = buildClothTexture(renderer);
   floor = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshPhysicalMaterial({
     color: backdrop.cloth, map: cloth, bumpMap: cloth, bumpScale: 3.0, roughness: 1.0, metalness: 0,
     sheen: 1, sheenRoughness: 0.55, sheenColor: new THREE.Color(0xb98cf0), envMapIntensity: 0.35,
   }));
-  floor.rotation.x = -Math.PI / 2; floor.position.y = floorY; floor.receiveShadow = true;
+  floor.rotation.x = -Math.PI / 2; floor.position.y = FLOOR_Y; floor.receiveShadow = true;
   scene.add(floor);
   applyBackdrop();
+  setupContactShadow();
+  setupPhysics(group);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Physics (cannon-es): the spiral is a chain of box colliders; it drops onto the cloth,
+ *  bounces, slides on friction and settles. Contact shadow is rendered from below.
+ * ------------------------------------------------------------------ */
+let world = null, body = null, pivot = null, shellMesh = null, recentred = true, topples = 0;
+const recentre = new THREE.Vector3();
+const DROP_HEIGHT = 1.5;
+function setupPhysics(model) {
+  world = new CANNON.World({ gravity: new CANNON.Vec3(0, -32, 0) });
+  world.allowSleep = true;
+  world.defaultContactMaterial.contactEquationStiffness = 2e7;
+  const clothM = new CANNON.Material('cloth'), shellM = new CANNON.Material('shell');
+  world.addContactMaterial(new CANNON.ContactMaterial(clothM, shellM, { friction: 0.85, restitution: 0.1 }));
+  const ground = new CANNON.Body({ mass: 0, material: clothM, shape: new CANNON.Plane() });
+  ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+  ground.position.set(0, FLOOR_Y, 0);
+  world.addBody(ground);
+
+  // one box per slice of the whorl: radial half = whorl height, axial half = whorl half-width (+ rib relief)
+  const DTH = 0.2, parts = [];
+  const com = new CANNON.Vec3(); let vol = 0;
+  for (let th = TH_E - 0.2; Ro(th) > 0.09; th -= DTH) {
+    const R = Ro(th), h = RATIO * R * 0.5, c = R - h;
+    const hx = h + 0.012 * R, hy = c * DTH * 0.51, hz = WIDTH_K * h + 0.035 * R;
+    const ctr = new CANNON.Vec3(c * Math.cos(th), c * Math.sin(th), 0);
+    const v = hx * hy * hz;
+    com.x += ctr.x * v; com.y += ctr.y * v; vol += v;
+    parts.push({ hx, hy, hz, ctr, th });
+  }
+  com.scale(1 / vol, com);
+  body = new CANNON.Body({ mass: 1, material: shellM, linearDamping: 0.04, angularDamping: 0.25, allowSleep: true, sleepSpeedLimit: 0.5, sleepTimeLimit: 0.4 });
+  for (const q of parts) {
+    const rot = new CANNON.Quaternion(); rot.setFromEuler(0, 0, q.th);
+    body.addShape(new CANNON.Box(new CANNON.Vec3(q.hx, q.hy, q.hz)), q.ctr.vsub(com), rot);
+  }
+  world.addBody(body);
+
+  pivot = new THREE.Group();
+  model.position.set(-com.x, -com.y, 0);
+  pivot.add(model);
+  scene.add(pivot);
+  dropSpecimen();
+}
+const rnd = (a, b) => a + Math.random() * (b - a);
+function dropSpecimen() {
+  const base = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));       // face up
+  const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd(-0.7, 0.7));
+  const axis = new THREE.Vector3(Math.cos(rnd(0, TAU)), 0, Math.sin(rnd(0, TAU))).normalize();
+  const tilt = new THREE.Quaternion().setFromAxisAngle(axis, rnd(0.2, 0.7));
+  const q = tilt.multiply(yaw).multiply(base);
+  body.quaternion.set(q.x, q.y, q.z, q.w);
+  body.position.set(rnd(0.1, 0.35), FLOOR_Y + DROP_HEIGHT, rnd(-0.1, 0.1));
+  body.velocity.set(rnd(-0.4, 0.4), 0, rnd(-0.4, 0.4));
+  body.angularVelocity.set(rnd(-2.5, 2.5), rnd(-1.5, 1.5), rnd(-2.5, 2.5));
+  body.wakeUp(); recentred = false; topples = 0;
+}
+// if it comes to rest balanced on its rim, give it the gentle knock that would topple it onto its face
+function toppleIfStanding() {
+  const q = new THREE.Quaternion(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+  const axis = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+  if (Math.abs(axis.y) > 0.6 || topples >= 4) return false;
+  topples++;
+  body.wakeUp();
+  body.applyImpulse(new CANNON.Vec3(axis.x * 0.8, 0, axis.z * 0.8), new CANNON.Vec3(0, 0.6, 0));
+  return true;
+}
+function pokeSpecimen(point) {
+  const dir = point.clone().sub(camera.position); dir.y = 0; dir.normalize();
+  const imp = new CANNON.Vec3(dir.x * 1.6, 0.9, dir.z * 1.6);
+  body.wakeUp(); recentred = false;
+  body.applyImpulse(imp, new CANNON.Vec3(point.x - body.position.x, point.y - body.position.y, point.z - body.position.z));
+}
+function stepPhysics(dt) {
+  if (!world) return;
+  world.step(1 / 120, dt, 6);
+  pivot.position.set(body.position.x, body.position.y, body.position.z);
+  pivot.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+  if (body.position.y < FLOOR_Y - 3 || Math.abs(body.position.x) > 12 || Math.abs(body.position.z) > 12) dropSpecimen();
+}
+
+// contact shadow: depth of the specimen seen from beneath the cloth, blurred, drawn just above the cloth
+const CS = { size: 4.2, height: 0.7 };
+let csTarget, csBlur, csPlane, csBlurPlane, csCamera, csGroup, csDepth, csHBlur, csVBlur;
+function setupContactShadow() {
+  csGroup = new THREE.Group(); scene.add(csGroup);
+  csTarget = new THREE.WebGLRenderTarget(512, 512); csTarget.texture.generateMipmaps = false;
+  csBlur = new THREE.WebGLRenderTarget(512, 512); csBlur.texture.generateMipmaps = false;
+  const geo = new THREE.PlaneGeometry(CS.size, CS.size).rotateX(Math.PI / 2);
+  csPlane = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: csTarget.texture, opacity: 0.85, transparent: true, depthWrite: false, fog: false }));
+  csPlane.renderOrder = 1; csPlane.scale.y = -1; csGroup.add(csPlane);
+  csBlurPlane = new THREE.Mesh(geo); csBlurPlane.visible = false; csGroup.add(csBlurPlane);
+  csCamera = new THREE.OrthographicCamera(-CS.size / 2, CS.size / 2, CS.size / 2, -CS.size / 2, 0, CS.height);
+  csCamera.rotation.x = Math.PI / 2; csGroup.add(csCamera);
+  csDepth = new THREE.MeshDepthMaterial(); csDepth.userData.darkness = { value: 1.9 };
+  csDepth.onBeforeCompile = (sh) => {
+    sh.uniforms.darkness = csDepth.userData.darkness;
+    sh.fragmentShader = 'uniform float darkness;\n' + sh.fragmentShader.replace('gl_FragColor = vec4( vec3( 1.0 - fragCoordZ ), opacity );', 'gl_FragColor = vec4( vec3( 0.0 ), ( 1.0 - fragCoordZ ) * darkness );');
+  };
+  csDepth.depthTest = false; csDepth.depthWrite = false;
+  csHBlur = new THREE.ShaderMaterial(HorizontalBlurShader); csHBlur.depthTest = false;
+  csVBlur = new THREE.ShaderMaterial(VerticalBlurShader); csVBlur.depthTest = false;
+}
+function blurContact(amount) {
+  csBlurPlane.visible = true;
+  csBlurPlane.material = csHBlur; csHBlur.uniforms.tDiffuse.value = csTarget.texture; csHBlur.uniforms.h.value = amount / 256;
+  renderer.setRenderTarget(csBlur); renderer.render(csBlurPlane, csCamera);
+  csBlurPlane.material = csVBlur; csVBlur.uniforms.tDiffuse.value = csBlur.texture; csVBlur.uniforms.v.value = amount / 256;
+  renderer.setRenderTarget(csTarget); renderer.render(csBlurPlane, csCamera);
+  csBlurPlane.visible = false;
+}
+function updateContactShadow() {
+  csGroup.position.set(body.position.x, FLOOR_Y + 0.002, body.position.z);
+  const bg = scene.background, alpha = renderer.getClearAlpha(), fog = scene.fog;
+  const hide = [floor, marker, csPlane]; const was = hide.map((o) => o.visible);
+  hide.forEach((o) => { o.visible = false; });
+  scene.background = null; scene.fog = null; renderer.shadowMap.autoUpdate = false;
+  scene.overrideMaterial = csDepth; renderer.setClearAlpha(0);
+  renderer.setRenderTarget(csTarget); renderer.render(scene, csCamera);
+  scene.overrideMaterial = null;
+  blurContact(3.2); blurContact(1.2);
+  renderer.setRenderTarget(null); renderer.setClearAlpha(alpha);
+  scene.background = bg; scene.fog = fog; renderer.shadowMap.autoUpdate = true;
+  hide.forEach((o, i) => { o.visible = was[i]; });
 }
 
 /* ------------------------------------------------------------------ *
@@ -624,6 +755,22 @@ function build() {
  * ------------------------------------------------------------------ */
 document.getElementById('btn-reset').addEventListener('click', () => {
   camera.position.copy(HOME.pos); controls.target.copy(HOME.target); controls.update();
+});
+document.getElementById('btn-drop').addEventListener('click', () => { if (body) dropSpecimen(); });
+// a quick click (no drag) on the specimen nudges it
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { downAt = e.button === 0 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!downAt || !shellMesh) return;
+  const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y), quick = performance.now() - downAt.t < 350;
+  downAt = null;
+  if (moved > 5 || !quick) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObject(shellMesh)[0];
+  if (hit) pokeSpecimen(hit.point);
 });
 const spin = document.getElementById('btn-spin');
 spin.addEventListener('click', () => {
@@ -685,13 +832,26 @@ $('light-reset').addEventListener('click', () => {
 });
 syncSliders();
 
-let lastT = performance.now();
+let lastT = performance.now(), contactDirty = 3, recentreLeft = 0;
 renderer.setAnimationLoop((now) => {
   const dt = Math.min(0.1, ((now || performance.now()) - lastT) / 1000); lastT = now || performance.now();
   if (L.orbit) {
     L.az = ((L.az + 24 * dt + 180) % 360) - 180;
     $('light-az').value = L.az; $('out-az').textContent = L.az.toFixed(0) + '°';
     applyLight();
+  }
+  if (world) {
+    stepPhysics(Math.min(dt, 0.05));
+    if (!body.sleepState || body.sleepState === CANNON.Body.AWAKE || contactDirty-- > 0) updateContactShadow();
+  }
+  // once the specimen has come to rest, glide the view so it sits in the middle again (keeps the viewing angle)
+  if (body && !recentred && body.sleepState === CANNON.Body.SLEEPING && !toppleIfStanding()) {
+    recentre.set(body.position.x - controls.target.x, 0, body.position.z - controls.target.z);
+    recentred = true; recentreLeft = 40;
+  }
+  if (recentreLeft > 0) {
+    const d = recentre.clone().multiplyScalar(1 / recentreLeft--);
+    camera.position.add(d); controls.target.add(d); recentre.sub(d);
   }
   if (floor) floor.visible = camera.position.y > floor.position.y + 0.005;
   controls.update(); renderer.render(scene, camera);
@@ -703,5 +863,5 @@ setTimeout(() => {
   document.getElementById('loading').classList.add('done');
   window.__ready = true;
 }, 60);
-window.__three = { THREE, camera, controls, renderer, scene, HOME, L, applyLight };
+window.__three = { THREE, camera, controls, renderer, scene, HOME, L, applyLight, get body() { return body; }, get world() { return world; }, toppleIfStanding, dropSpecimen, pokeSpecimen };
 </script>
