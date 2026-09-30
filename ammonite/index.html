@@ -219,12 +219,43 @@ function section(th, phi, scale) {
 const rb = { ph: 0, rib: 0, s: 0, P1: 0 };
 function ribInfo(th, t) {
   const shift = 0.17 * Math.pow(1 - t / Math.PI, 1.3);          // ribs sweep forward toward the venter
-  const ph = NRIB * (th - shift);
+  let ph = NRIB * (th - shift) + 1.3 * (noise3(th * 2.3, 4.4, 1.1) - 0.5);   // uneven rib spacing
   const P1 = Math.pow(0.5 + 0.5 * Math.cos(ph), 2.2);
   const P2 = 0.7 * Math.pow(0.5 + 0.5 * Math.cos(2 * ph), 2.2) * sstep(1.9, 1.1, t); // intercalated ribs on the outer flank
-  rb.ph = ph; rb.P1 = P1; rb.rib = Math.max(P1, P2);
+  const amp = 0.7 + 0.5 * hash3(Math.floor(ph / TAU + 0.5) * 1.7, 3.1, 5.3);            // some ribs stronger than others
+  rb.ph = ph; rb.P1 = P1; rb.rib = Math.max(P1, P2) * amp;
   rb.s = (0.3 + 0.7 * sstep(0.15, 0.9, t)) * (1 - sstep(2.3, 2.95, t));
   return rb;
+}
+
+// Fossil damage: chipped keel/rib tips (kind 0, cut through) and flaked-off shell on the flanks (kind 1, matrix showing)
+// [angle back from the aperture, signed position around the tube (+ = face up), radius along/around, depth (x whorl size), kind]
+const CHIP_LIST = [
+  [-0.30, 0.55, 0.07, 0.11, 0.075, 0], [-1.55, 0.30, 0.06, 0.09, 0.070, 0], [-2.90, 0.75, 0.07, 0.10, 0.060, 0],
+  [-4.60, 0.42, 0.08, 0.10, 0.060, 0], [-0.90, -0.35, 0.07, 0.10, 0.070, 0], [-3.60, -0.60, 0.06, 0.09, 0.060, 0],
+  [-2.25, 0.20, 0.05, 0.08, 0.070, 0], [-5.9, 0.60, 0.07, 0.10, 0.060, 0],
+  [-1.25, 1.35, 0.10, 0.08, 0.012, 1], [-2.15, 1.10, 0.07, 0.06, 0.010, 1], [-0.55, 1.75, 0.08, 0.07, 0.010, 1],
+  [-3.30, 1.55, 0.09, 0.07, 0.010, 1], [-0.18, -1.10, 0.07, 0.11, 0.016, 1],
+].map((c, i) => {
+  const th = TH_E + c[0], R = Ro(th), sz = Math.pow(R, 0.7);
+  return { th, ts: c[1], ka: R * (1 - RATIO / 2), kp: R * RATIO * 0.25 * (1 + WIDTH_K), ax: c[2] * sz, ay: c[3] * sz, depth: c[4], kind: c[5], seed: i * 13.7 };
+});
+const chip = { mask: 0, floor: 0 };
+function chipField(th, ts) {
+  chip.mask = 0; chip.floor = 0;
+  for (const c of CHIP_LIST) {
+    const dth = th - c.th;
+    if (dth > 0.6 || dth < -0.6) continue;
+    const ds = dth * c.ka, dp = (ts - c.ts) * c.kp;
+    let d = Math.hypot(ds / c.ax, dp / c.ay);
+    d *= 1 + 0.5 * (noise3(ds * 30 + c.seed, dp * 30, c.seed) - 0.5) + 0.3 * (noise3(ds * 90, dp * 90, c.seed + 3) - 0.5);
+    const m = 1 - sstep(0.78, 1.0, d);
+    if (m <= 0) continue;
+    if (m > chip.mask) chip.mask = m;
+    const fl = -(c.kind === 0 ? 0.007 * (0.6 + 0.4 * (1 - d)) : 0.005) * m;   // ribs/keel shaved off, deepest in the middle (stays above the inner wall)
+    if (fl < chip.floor) chip.floor = fl;
+  }
+  return chip;
 }
 
 // Jagged broken edge of the last chamber
@@ -239,7 +270,7 @@ function breakAngle(phi) {
 function buildShell() {
   const NT = 1800, NP = 144, cols = NP + 1;
   const count = (NT + 1) * cols;
-  const pos = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3), surf = new Float32Array(count * 2);
+  const pos = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3), surf = new Float32Array(count * 2), dmg = new Float32Array(count);
   const thEnd = new Float32Array(cols);
   for (let i = 0; i < cols; i++) thEnd[i] = breakAngle((i / NP) * TAU);
 
@@ -254,15 +285,21 @@ function buildShell() {
       const r = ribInfo(thNom, t);
       const keel = Math.exp(-((t / 0.11) ** 2));
       const node = Math.exp(-(((t - 0.85) / 0.14) ** 2)) * Math.pow(r.P1, 3);
-      const disp = s.R * g * (0.05 * r.rib * r.s + 0.026 * keel + 0.03 * node);
-      const rho = s.rho + disp * s.nr, z = s.z + disp * s.nz;
+      const cph = Math.cos(phi), sph = Math.sin(phi);
+      let disp = s.R * g * (0.05 * r.rib * r.s + 0.026 * keel + 0.03 * node);
+      disp += s.R * g * 0.022 * (noise3(thNom * 1.7, cph * 1.3 + 5, sph * 1.3) - 0.5);      // slow undulation of a slightly crushed shell
+      const ch = chipField(thNom, phi <= Math.PI ? phi : phi - TAU);
+      if (ch.mask > 0) disp = mix(disp, Math.min(disp, s.R * ch.floor), ch.mask);
+      const wob = 1 + 0.03 * (noise3(thNom * 0.55, 1.3, 4.7) - 0.5);                          // uneven growth
+      const rho = (s.rho + disp * s.nr) * wob, z = (s.z + disp * s.nz) * (2 - wob);
       pos[p] = rho * Math.cos(th); pos[p + 1] = rho * Math.sin(th); pos[p + 2] = z;
+      dmg[i + j * cols] = ch.mask;
       uv[q] = j / NT; uv[q + 1] = i / NP;
       // physical surface coordinates (arc length along the spiral, distance around the tube) for the shell micro-texture
       surf[q] = s.R * (1 - RATIO / 2) / B;
       surf[q + 1] = t * s.R * RATIO * 0.25 * (1 + WIDTH_K);
       // baked cavity shading: umbilical seam and small inner whorls sit in shadow
-      let ao = mix(0.32, 1, sstep(3.14, 2.15, t)) * (0.12 + 0.88 * sstep(0.07, 0.42, s.R));
+      let ao = mix(0.42, 1, sstep(3.14, 2.15, t)) * (0.4 + 0.6 * sstep(0.03, 0.26, s.R));
       ao *= 0.92 + 0.08 * r.rib;
       col[p] = col[p + 1] = col[p + 2] = ao;
       p += 3; q += 2;
@@ -280,6 +317,7 @@ function buildShell() {
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.setAttribute('aSurf', new THREE.BufferAttribute(surf, 2));
+  geo.setAttribute('aDamage', new THREE.BufferAttribute(dmg, 1));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.computeVertexNormals();
   // close the normal seam where phi wraps around
@@ -293,38 +331,45 @@ function buildShell() {
   return { geo, thEnd, NP };
 }
 
-// Broken end: thin pearly wall, then dark matrix-filled chamber
+// Broken end: thin pearly wall, then the hollow tube of the last chamber running back into the shell, closed by a dished septum
 function buildCap(thEnd, NP) {
-  const K = 12, cols = NP + 1, count = (K + 1) * cols;
-  const pos = new Float32Array(count * 3), col = new Float32Array(count * 3);
+  const K1 = 16, K2 = 12, cols = NP + 1, rings = K1 + K2 + 2;
+  const DEP1 = 0.62, DISH = 0.4, thMean = TH_E - 0.14;
+  const pos = new Float32Array(rings * cols * 3), col = new Float32Array(rings * cols * 3);
   let p = 0;
-  for (let k = 0; k <= K; k++) {
-    const f = k / K;
+  for (let k = 0; k < rings; k++) {
     for (let i = 0; i < cols; i++) {
       const phi = (i / NP) * TAU, c = Math.cos(phi), s = Math.sin(phi);
-      const nz = noise3(c * 3 + f * 5, s * 3, f * 4 + 2.2);
-      const dep = 0.006 + 0.075 * Math.sqrt(f) + 0.035 * f * nz;
-      const th = thEnd[i] - dep;
-      const scale = k === 0 ? 0.985 : Math.max(0.012, 1 - 0.99 * f);
-      const sc = section(th, phi, scale);
-      const lump = (nz - 0.5) * 0.05 * f;
-      const rr = sc.rho + lump;
-      pos[p] = rr * Math.cos(th); pos[p + 1] = rr * Math.sin(th); pos[p + 2] = sc.z + lump * 0.6;
-      let r, g, b;
-      if (k === 0) { r = 0.78; g = 0.72; b = 0.62; }
-      else {
-        const m = 0.10 + 0.10 * noise3(c * 6, s * 6, f * 9) + 0.05 * noise3(c * 22, s * 22, f * 30);
-        const septa = Math.pow(Math.abs(Math.sin(f * 26 + nz * 2.5)), 6);
-        r = m * 0.7 + 0.04 * septa; g = m * 0.53 + 0.028 * septa; b = m * 0.43 + 0.02 * septa;
-        const dark = 1 - 0.6 * f;
-        r *= dark; g *= dark; b *= dark;
+      let th, scale, r, g, b;
+      const nz = noise3(c * 3 + k * 0.3, s * 3, k * 0.17 + 2.2);
+      if (k <= K1 + 1) {                                    // wall thickness lip, then inner wall of the tube
+        const f = Math.max(0, k - 1) / K1;
+        const jag = sstep(0, 0.6, f);
+        th = mix(thEnd[i], thMean, jag) - (k === 0 ? 0 : 0.008 + DEP1 * f) - 0.03 * f * (nz - 0.5);
+        scale = k === 0 ? 0.99 : 0.955 - 0.02 * f;
+        if (k <= 1) { r = 0.78; g = 0.72; b = 0.62; }
+        else {
+          const m = 0.11 + 0.08 * noise3(c * 5, s * 5, f * 7) + 0.04 * noise3(c * 18, s * 18, f * 25);
+          const dark = Math.pow(1 - f, 2.2) * 0.75 + 0.05;  // deep inside is nearly black
+          r = m * 1.0 * dark; g = m * 0.85 * dark; b = m * 0.78 * dark;
+        }
+      } else {                                              // septum
+        const f = (k - K1 - 1) / (K2);
+        const dish = 1 - (1 - f) * (1 - f);
+        th = thMean - DEP1 - 0.008 - DISH * dish + 0.05 * f * (nz - 0.5);
+        scale = Math.max(0.012, 0.935 * (1 - f));
+        const m = 0.09 + 0.07 * noise3(c * 6, s * 6, f * 9) + 0.04 * noise3(c * 22, s * 22, f * 30);
+        const suture = Math.pow(Math.abs(Math.sin(f * 20 + nz * 2.5)), 8);
+        r = (m * 0.7 + 0.03 * suture) * 0.35; g = (m * 0.55 + 0.02 * suture) * 0.35; b = (m * 0.45 + 0.015 * suture) * 0.35;
       }
+      const sc = section(th, phi, scale);
+      pos[p] = sc.rho * Math.cos(th); pos[p + 1] = sc.rho * Math.sin(th); pos[p + 2] = sc.z;
       col[p] = r; col[p + 1] = g; col[p + 2] = b;
       p += 3;
     }
   }
   const idx = [];
-  for (let k = 0; k < K; k++) for (let i = 0; i < NP; i++) {
+  for (let k = 0; k < rings - 1; k++) for (let i = 0; i < NP; i++) {
     const a = k * cols + i, b = a + 1, c = a + cols, d = c + 1;
     idx.push(a, c, b, b, c, d);
   }
@@ -364,7 +409,8 @@ function buildTextures(renderer) {
       const n1 = noise3(th * 0.9, c * 1.4, s * 1.4);
       const n2 = noise3(th * 4.0, c * 3 + 10, s * 3);
       const n3 = noise3(th * 14.0, c * 9 + 20, s * 9);
-      const x = 0.86 - 0.27 * t + 0.38 * (n1 - 0.5) + 0.12 * (n2 - 0.5) + 0.05 * Math.sin(th * 0.7);
+      const Rr = Ro(th), inner = 1 - sstep(0.08, 0.5, Rr);
+      const x = mix(0.86 - 0.27 * t + 0.38 * (n1 - 0.5) + 0.12 * (n2 - 0.5) + 0.05 * Math.sin(th * 0.7), 0.5 + 0.2 * (n1 - 0.5) + 0.1 * (n2 - 0.5) - 0.12 * sstep(2.0, 3.1, t), inner * 0.75);   // near the centre: glowing teal with a warm ring at the shoulder
       pal(x, rgb);
       // pastel pearl under saturated interference colour; crests warmer and lighter, troughs deeper
       let R = mix(0.78, rgb[0], 0.92), G = mix(0.78, rgb[1], 0.92), Bc = mix(0.74, rgb[2], 0.92);
@@ -375,7 +421,7 @@ function buildTextures(renderer) {
       const thick = 0.5 + 0.5 * Math.sin(2.4 * t + 6 * (n1 - 0.5) + 3 * (n2 - 0.5) + 1.6 * r.rib + th * 0.35);
       const tv = Math.min(255, thick * 255);
       cThk[o] = cThk[o + 1] = cThk[o + 2] = tv; cThk[o + 3] = 255;
-      const rough = clamp01(0.52 + 0.26 * (1 - r.rib) + 0.24 * (n3 - 0.5)) * 255;
+      const rough = clamp01(0.52 + 0.26 * (1 - r.rib) + 0.24 * (n3 - 0.5) - 0.24 * inner) * 255;   // oilier (smoother) toward the centre
       cRgh[o] = cRgh[o + 1] = cRgh[o + 2] = rough; cRgh[o + 3] = 255;
       const gl = 0.5 + 0.5 * Math.sin(r.ph * 5 + 2.5 * n2);
       const bump = clamp01(0.5 * gl * (0.4 + 0.6 * r.s) + 0.3 * n3 + 0.2 * r.rib) * 255;
@@ -426,10 +472,11 @@ const CELL = 0.022;
 function patchShellShader(mat) {
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 aSurf;\nvarying vec2 vSurf;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSurf = aSurf;');
+      .replace('#include <common>', '#include <common>\nattribute vec2 aSurf;\nvarying vec2 vSurf;\nattribute float aDamage;\nvarying float vDmg;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSurf = aSurf; vDmg = aDamage;');
     const fnc = `
 varying vec2 vSurf;
+varying float vDmg;
 vec2 h22(vec2 p){ p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3))); return fract(sin(p) * 43758.5453); }
 float h21(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
 float vnoise(vec2 p){
@@ -448,21 +495,27 @@ vec3 voro(vec2 x){
     const setup = `
   vec2 mq = vSurf / ${CELL.toFixed(4)};
   vec3 mv = voro(mq);
-  float mFade = 1.0 - smoothstep(0.05, 0.2, length(fwidth(mq)));
+  float innerK = smoothstep(0.08, 0.4, vSurf.x * 0.21);
+  float mFade = (1.0 - smoothstep(0.05, 0.2, length(fwidth(mq)))) * innerK;
   float crack = (1.0 - smoothstep(0.01, 0.075, mv.y)) * mFade;
   vec2 gq = vSurf * 320.0;
   float gFade = 1.0 - smoothstep(0.06, 0.28, length(fwidth(gq)));
-  float grain = (vnoise(gq) * 0.65 + vnoise(gq * 2.3 + 7.0) * 0.35) - 0.5;
-  float microH = (0.4 * (1.0 - smoothstep(0.0, 0.55, mv.x)) - 0.6 * crack) * mFade + grain * 0.55 * gFade;
+  float grain = ((vnoise(gq) * 0.65 + vnoise(gq * 2.3 + 7.0) * 0.35) - 0.5) * mix(0.3, 1.0, innerK);
+  float dm0 = vDmg + (vnoise(vSurf * 70.0) - 0.5) * 0.45 + (vnoise(vSurf * 18.0) - 0.5) * 0.3;
+  float dmg = smoothstep(0.4, 0.6, dm0);
+  float dEdge = smoothstep(0.28, 0.42, dm0) * (1.0 - smoothstep(0.42, 0.58, dm0));
+  float dGrain = vnoise(vSurf * 260.0);
+  float microH = (0.4 * (1.0 - smoothstep(0.0, 0.55, mv.x)) - 0.6 * crack) * mFade + grain * 0.55 * gFade + dmg * (dGrain - 0.5) * 0.9;
   float cellRnd = (mv.z - 0.5) * mFade;
 `;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + fnc)
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + setup)
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= (1.0 + cellRnd * 0.16) * (1.0 - 0.32 * crack) * (1.0 + grain * 0.18 * gFade);')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(roughnessFactor + crack * 0.25 + grain * 0.22 * gFade, 0.08, 1.0);')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= (1.0 + cellRnd * 0.16) * (1.0 - 0.32 * crack) * (1.0 + grain * 0.18 * gFade);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13, 0.105, 0.09) * (0.55 + 1.1 * dGrain), dmg);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.86, 0.78), dEdge * 0.55);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(clamp(roughnessFactor + crack * 0.25 + grain * 0.22 * gFade, 0.08, 1.0), 0.95, dmg);')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n  metalnessFactor *= (1.0 - dmg);')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n  normal = perturbNormalArb(-vViewPosition, normal, clamp(vec2(dFdx(microH), dFdy(microH)) * 0.9, -0.4, 0.4), faceDirection);')
-      .replace('#include <lights_physical_fragment>', THREE.ShaderChunk.lights_physical_fragment.replace(
+      .replace('#include <lights_physical_fragment>', THREE.ShaderChunk.lights_physical_fragment.replace('material.iridescence = iridescence;', 'material.iridescence = iridescence * (1.0 - dmg);').replace(
         'material.iridescenceThickness = (iridescenceThicknessMaximum - iridescenceThicknessMinimum) * texture2D( iridescenceThicknessMap, vIridescenceThicknessMapUv ).g + iridescenceThicknessMinimum;',
         'material.iridescenceThickness = (iridescenceThicknessMaximum - iridescenceThicknessMinimum) * clamp(texture2D( iridescenceThicknessMap, vIridescenceThicknessMapUv ).g + cellRnd * 0.75, 0.0, 1.0) + iridescenceThicknessMinimum;'));
   };
