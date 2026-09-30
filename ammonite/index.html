@@ -27,6 +27,7 @@
   }
   #stage[data-bg="black"] { background: radial-gradient(ellipse at 50% 42%, #2a2630 0%, #0a090c 100%); }
   #stage[data-bg="grey"]  { background: radial-gradient(ellipse at 50% 42%, #dcd8e2 0%, #8d8896 100%); }
+  .vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0) 52%, rgba(6,2,14,0.42) 100%); }
   canvas { display: block; width: 100%; height: 100%; outline: none; cursor: grab; }
   canvas:active { cursor: grabbing; }
 
@@ -110,6 +111,7 @@
 </style>
 
 <div id="stage"></div>
+<div class="vignette"></div>
 <header class="title">
   <h1>鸚鵡螺標本</h1>
   <p>虹彩珍珠層 · 肋紋螺旋 · 3D 檢視</p>
@@ -122,7 +124,7 @@
 <div class="tray" role="group" aria-label="檢視控制">
   <button id="btn-reset" type="button">重設視角</button>
   <button id="btn-spin" type="button" aria-pressed="false">自動旋轉</button>
-  <button id="btn-bg" type="button">背景：紫絨</button>
+  <button id="btn-bg" type="button">桌面：紫絨</button>
   <button id="btn-lights" type="button" aria-pressed="true" aria-controls="lights">光源設定</button>
   <label for="gloss">光澤 <input id="gloss" type="range" min="0.3" max="2.5" step="0.05" value="1.4"></label>
 </div>
@@ -136,7 +138,7 @@
   <div class="custom-row"><label for="light-custom">自訂顏色</label><input id="light-custom" type="color" value="#fff2e0"></div>
   <div class="sliders">
     <label for="light-az">水平角</label><input id="light-az" type="range" min="-180" max="180" step="1" value="-32"><output id="out-az">-32°</output>
-    <label for="light-el">高度角</label><input id="light-el" type="range" min="-80" max="88" step="1" value="40"><output id="out-el">40°</output>
+    <label for="light-el">高度角</label><input id="light-el" type="range" min="3" max="88" step="1" value="40"><output id="out-el">40°</output>
     <label for="light-dist">距離</label><input id="light-dist" type="range" min="1.5" max="7" step="0.1" value="5.5"><output id="out-dist">5.5</output>
     <label for="light-gain">強度</label><input id="light-gain" type="range" min="0.1" max="3" step="0.05" value="1"><output id="out-gain">1.0×</output>
   </div>
@@ -231,7 +233,7 @@ function breakAngle(phi) {
 function buildShell() {
   const NT = 1800, NP = 144, cols = NP + 1;
   const count = (NT + 1) * cols;
-  const pos = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3);
+  const pos = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3), surf = new Float32Array(count * 2);
   const thEnd = new Float32Array(cols);
   for (let i = 0; i < cols; i++) thEnd[i] = breakAngle((i / NP) * TAU);
 
@@ -250,6 +252,9 @@ function buildShell() {
       const rho = s.rho + disp * s.nr, z = s.z + disp * s.nz;
       pos[p] = rho * Math.cos(th); pos[p + 1] = rho * Math.sin(th); pos[p + 2] = z;
       uv[q] = j / NT; uv[q + 1] = i / NP;
+      // physical surface coordinates (arc length along the spiral, distance around the tube) for the shell micro-texture
+      surf[q] = s.R * (1 - RATIO / 2) / B;
+      surf[q + 1] = t * s.R * RATIO * 0.25 * (1 + WIDTH_K);
       // baked cavity shading: umbilical seam and small inner whorls sit in shadow
       let ao = mix(0.32, 1, sstep(3.14, 2.15, t)) * (0.12 + 0.88 * sstep(0.07, 0.42, s.R));
       ao *= 0.92 + 0.08 * r.rib;
@@ -268,6 +273,7 @@ function buildShell() {
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('aSurf', new THREE.BufferAttribute(surf, 2));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.computeVertexNormals();
   // close the normal seam where phi wraps around
@@ -295,14 +301,16 @@ function buildCap(thEnd, NP) {
       const th = thEnd[i] - dep;
       const scale = k === 0 ? 0.985 : Math.max(0.012, 1 - 0.99 * f);
       const sc = section(th, phi, scale);
-      pos[p] = sc.rho * Math.cos(th); pos[p + 1] = sc.rho * Math.sin(th); pos[p + 2] = sc.z;
+      const lump = (nz - 0.5) * 0.05 * f;
+      const rr = sc.rho + lump;
+      pos[p] = rr * Math.cos(th); pos[p + 1] = rr * Math.sin(th); pos[p + 2] = sc.z + lump * 0.6;
       let r, g, b;
       if (k === 0) { r = 0.78; g = 0.72; b = 0.62; }
       else {
         const m = 0.10 + 0.10 * noise3(c * 6, s * 6, f * 9) + 0.05 * noise3(c * 22, s * 22, f * 30);
         const septa = Math.pow(Math.abs(Math.sin(f * 26 + nz * 2.5)), 6);
-        r = m * 1.35 + 0.06 * septa; g = m * 1.05 + 0.04 * septa; b = m * 0.85 + 0.03 * septa;
-        const dark = 1 - 0.55 * f;
+        r = m * 0.7 + 0.04 * septa; g = m * 0.53 + 0.028 * septa; b = m * 0.43 + 0.02 * septa;
+        const dark = 1 - 0.6 * f;
         r *= dark; g *= dark; b *= dark;
       }
       col[p] = r; col[p + 1] = g; col[p + 2] = b;
@@ -353,7 +361,7 @@ function buildTextures(renderer) {
       const x = 0.86 - 0.27 * t + 0.38 * (n1 - 0.5) + 0.12 * (n2 - 0.5) + 0.05 * Math.sin(th * 0.7);
       pal(x, rgb);
       // pastel pearl under saturated interference colour; crests warmer and lighter, troughs deeper
-      let R = mix(0.93, rgb[0], 0.62), G = mix(0.91, rgb[1], 0.62), Bc = mix(0.86, rgb[2], 0.62);
+      let R = mix(0.78, rgb[0], 0.92), G = mix(0.78, rgb[1], 0.92), Bc = mix(0.74, rgb[2], 0.92);
       R = mix(R, 1.0, 0.22 * rs); G = mix(G, 0.96, 0.22 * rs); Bc = mix(Bc, 0.86, 0.22 * rs);
       const sh = 0.88 + 0.12 * mix(r.rib, 1, 0.3);
       const o = (py * Wd + px) * 4;
@@ -361,7 +369,7 @@ function buildTextures(renderer) {
       const thick = 0.5 + 0.5 * Math.sin(2.4 * t + 6 * (n1 - 0.5) + 3 * (n2 - 0.5) + 1.6 * r.rib + th * 0.35);
       const tv = Math.min(255, thick * 255);
       cThk[o] = cThk[o + 1] = cThk[o + 2] = tv; cThk[o + 3] = 255;
-      const rough = clamp01(0.28 + 0.5 * (1 - r.rib) + 0.25 * (n3 - 0.5)) * 255;
+      const rough = clamp01(0.52 + 0.26 * (1 - r.rib) + 0.24 * (n3 - 0.5)) * 255;
       cRgh[o] = cRgh[o + 1] = cRgh[o + 2] = rough; cRgh[o + 3] = 255;
       const gl = 0.5 + 0.5 * Math.sin(r.ph * 5 + 2.5 * n2);
       const bump = clamp01(0.5 * gl * (0.4 + 0.6 * r.s) + 0.3 * n3 + 0.2 * r.rib) * 255;
@@ -378,6 +386,80 @@ function buildTextures(renderer) {
     return tex;
   };
   return { color: mk(cCol, true), thick: mk(cThk, false), rough: mk(cRgh, false), bump: mk(cBmp, false) };
+}
+
+// tileable woven-pile cloth
+function buildClothTexture(renderer) {
+  const N = 512, P = 64, data = new Uint8Array(N * N * 4);
+  const hh = (a, b) => { const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return n - Math.floor(n); };
+  const md = (a, m) => ((a % m) + m) % m;
+  const pn = (x, y, m) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hh(md(xi, m), md(yi, m)), b = hh(md(xi + 1, m), md(yi, m)), c = hh(md(xi, m), md(yi + 1, m)), d = hh(md(xi + 1, m), md(yi + 1, m));
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const weave = 0.5 + 0.5 * Math.sin(x * Math.PI / 2) * Math.sin(y * Math.PI / 2);
+    let v = 0.62 + 0.22 * (pn(x / 8, y / 8, P) - 0.5) + 0.18 * (pn(x / 2, y / 2, N / 2) - 0.5) + 0.22 * (hh(x, y) - 0.5) + 0.06 * weave;
+    v = Math.min(1, Math.max(0, v)) * 255;
+    const o = (y * N + x) * 4; data[o] = data[o + 1] = data[o + 2] = v; data[o + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(180, 180);
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.needsUpdate = true;
+  return t;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Shell micro-texture (shader): ammolite "dragon-skin" scales, hairline cracks, fine grain.
+ *  Works in physical surface units so the detail stays sharp when zooming in.
+ * ------------------------------------------------------------------ */
+const CELL = 0.022;
+function patchShellShader(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 aSurf;\nvarying vec2 vSurf;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSurf = aSurf;');
+    const fnc = `
+varying vec2 vSurf;
+vec2 h22(vec2 p){ p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3))); return fract(sin(p) * 43758.5453); }
+float h21(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+vec3 voro(vec2 x){
+  vec2 n = floor(x), f = fract(x);
+  float d1 = 8.0, d2 = 8.0; vec2 id = vec2(0.0);
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 g = vec2(float(i), float(j)); vec2 r = g + h22(n + g) - f; float d = dot(r, r);
+    if (d < d1) { d2 = d1; d1 = d; id = n + g; } else if (d < d2) { d2 = d; }
+  }
+  return vec3(sqrt(d1), sqrt(d2) - sqrt(d1), h21(id));
+}`;
+    const setup = `
+  vec2 mq = vSurf / ${CELL.toFixed(4)};
+  vec3 mv = voro(mq);
+  float mFade = 1.0 - smoothstep(0.05, 0.2, length(fwidth(mq)));
+  float crack = (1.0 - smoothstep(0.01, 0.075, mv.y)) * mFade;
+  vec2 gq = vSurf * 320.0;
+  float gFade = 1.0 - smoothstep(0.06, 0.28, length(fwidth(gq)));
+  float grain = (vnoise(gq) * 0.65 + vnoise(gq * 2.3 + 7.0) * 0.35) - 0.5;
+  float microH = (0.4 * (1.0 - smoothstep(0.0, 0.55, mv.x)) - 0.6 * crack) * mFade + grain * 0.55 * gFade;
+  float cellRnd = (mv.z - 0.5) * mFade;
+`;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + fnc)
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + setup)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= (1.0 + cellRnd * 0.16) * (1.0 - 0.32 * crack) * (1.0 + grain * 0.18 * gFade);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(roughnessFactor + crack * 0.25 + grain * 0.22 * gFade, 0.08, 1.0);')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n  normal = perturbNormalArb(-vViewPosition, normal, clamp(vec2(dFdx(microH), dFdy(microH)) * 0.9, -0.4, 0.4), faceDirection);')
+      .replace('#include <lights_physical_fragment>', THREE.ShaderChunk.lights_physical_fragment.replace(
+        'material.iridescenceThickness = (iridescenceThicknessMaximum - iridescenceThicknessMinimum) * texture2D( iridescenceThicknessMap, vIridescenceThicknessMapUv ).g + iridescenceThicknessMinimum;',
+        'material.iridescenceThickness = (iridescenceThicknessMaximum - iridescenceThicknessMinimum) * clamp(texture2D( iridescenceThicknessMap, vIridescenceThicknessMapUv ).g + cellRnd * 0.75, 0.0, 1.0) + iridescenceThicknessMinimum;'));
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -398,7 +480,7 @@ const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 
 const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 60);
-const HOME = { pos: new THREE.Vector3(0.55, -0.75, 3.9), target: new THREE.Vector3(-0.1, 0, 0) };
+const HOME = { pos: new THREE.Vector3(0.45, 2.75, 2.85), target: new THREE.Vector3(-0.1, -0.1, -0.05) };
 camera.position.copy(HOME.pos);
 
 /* ------------------------------------------------------------------ *
@@ -422,10 +504,28 @@ const haloCanvas = document.createElement('canvas'); haloCanvas.width = haloCanv
 { const g = haloCanvas.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }
-const bead = new THREE.Mesh(new THREE.SphereGeometry(0.07, 20, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
-const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(haloCanvas), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
+const bead = new THREE.Mesh(new THREE.SphereGeometry(0.07, 20, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, fog: false }));
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(haloCanvas), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, fog: false }));
 halo.scale.setScalar(0.9);
 const marker = new THREE.Group(); marker.add(bead, halo); scene.add(marker);
+
+// the cloth the specimen lies on, and the room behind it, both lit by (and tinted with) the light
+const BACKDROPS = [
+  { id: 'velvet', name: '紫絨', cloth: 0x6b46a0, room: 0x1d0e36 },
+  { id: 'black', name: '黑絨', cloth: 0x2a2730, room: 0x0a080d },
+  { id: 'grey', name: '灰布', cloth: 0xa39eaa, room: 0x35323b },
+];
+let backdrop = BACKDROPS[0];
+scene.background = new THREE.Color(backdrop.room);
+scene.fog = new THREE.FogExp2(backdrop.room, 0.085);
+let floor = null;
+const roomTint = new THREE.Color();
+function applyBackdrop() {
+  roomTint.set(backdrop.room).multiply(WHITE.clone().lerp(L.color, 0.9)).multiplyScalar(0.5 + 0.5 * Math.min(L.gain, 2));
+  scene.background.copy(roomTint);
+  scene.fog.color.copy(roomTint);
+  if (floor) floor.material.color.set(backdrop.cloth);
+}
 
 let envTex = null, envTimer = 0;
 function rebuildEnvironment() {
@@ -449,6 +549,7 @@ function applyLight({ env = false } = {}) {
   key.color.copy(L.color);
   fill.color.copy(L.color).lerp(WHITE, 0.45);
   rim.color.copy(L.color).lerp(WHITE, 0.45);
+  applyBackdrop();
   marker.position.copy(key.position);
   bead.material.color.copy(L.color).lerp(WHITE, 0.35);
   halo.material.color.copy(L.color);
@@ -484,14 +585,15 @@ function build() {
   const tex = buildTextures(renderer);
   const shellMat = new THREE.MeshPhysicalMaterial({
     map: tex.color, vertexColors: true,
-    roughness: 0.6, roughnessMap: tex.rough, metalness: 0.28,
-    bumpMap: tex.bump, bumpScale: 1.6,
-    clearcoat: 1, clearcoatRoughness: 0.05,
+    roughness: 0.78, roughnessMap: tex.rough, metalness: 0.5,
+    bumpMap: tex.bump, bumpScale: 2.2,
+    clearcoat: 0.12, clearcoatRoughness: 0.5,
     iridescence: 1, iridescenceIOR: 1.9, iridescenceThicknessRange: [200, 800], iridescenceThicknessMap: tex.thick,
-    sheen: 0.4, sheenRoughness: 0.4, sheenColor: new THREE.Color(0xd9c8ff),
-    envMapIntensity: 1.4,
+    sheen: 0.5, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xd9c8ff),
+    envMapIntensity: 1.5, fog: false,
   });
-  const capMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.5 });
+  patchShellShader(shellMat);
+  const capMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.5, fog: false });
   mats.push(shellMat);
 
   const { geo, thEnd, NP } = buildShell();
@@ -502,7 +604,19 @@ function build() {
   // embryonic chamber plugging the centre of the spiral
   const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 24, 16), new THREE.MeshStandardMaterial({ color: 0x1b1210, roughness: 0.9 }));
   group.add(shell, cap, core);
+  group.rotation.x = -Math.PI / 2;          // lie flat, face up
   scene.add(group);
+  group.updateMatrixWorld(true);
+  const floorY = new THREE.Box3().setFromObject(shell).min.y - 0.004;
+
+  const cloth = buildClothTexture(renderer);
+  floor = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshPhysicalMaterial({
+    color: backdrop.cloth, map: cloth, bumpMap: cloth, bumpScale: 3.0, roughness: 1.0, metalness: 0,
+    sheen: 1, sheenRoughness: 0.55, sheenColor: new THREE.Color(0xb98cf0), envMapIntensity: 0.35,
+  }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = floorY; floor.receiveShadow = true;
+  scene.add(floor);
+  applyBackdrop();
 }
 
 /* ------------------------------------------------------------------ *
@@ -516,13 +630,13 @@ spin.addEventListener('click', () => {
   controls.autoRotate = !controls.autoRotate;
   spin.setAttribute('aria-pressed', String(controls.autoRotate));
 });
-const BGS = [['velvet', '紫絨'], ['black', '黑'], ['grey', '灰']];
 let bgIdx = 0;
 const bgBtn = document.getElementById('btn-bg');
 bgBtn.addEventListener('click', () => {
-  bgIdx = (bgIdx + 1) % BGS.length;
-  stage.dataset.bg = BGS[bgIdx][0];
-  bgBtn.textContent = '背景：' + BGS[bgIdx][1];
+  bgIdx = (bgIdx + 1) % BACKDROPS.length;
+  backdrop = BACKDROPS[bgIdx];
+  bgBtn.textContent = '桌面：' + backdrop.name;
+  applyBackdrop();
 });
 document.getElementById('gloss').addEventListener('input', (e) => {
   const v = parseFloat(e.target.value);
@@ -579,6 +693,7 @@ renderer.setAnimationLoop((now) => {
     $('light-az').value = L.az; $('out-az').textContent = L.az.toFixed(0) + '°';
     applyLight();
   }
+  if (floor) floor.visible = camera.position.y > floor.position.y + 0.005;
   controls.update(); renderer.render(scene, camera);
 });
 
