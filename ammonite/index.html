@@ -228,15 +228,26 @@ function ribInfo(th, t) {
   return rb;
 }
 
-// Fossil damage: chipped keel/rib tips (kind 0, cut through) and flaked-off shell on the flanks (kind 1, matrix showing)
-// [angle back from the aperture, signed position around the tube (+ = face up), radius along/around, depth (x whorl size), kind]
-const CHIP_LIST = [
-  [-0.30, 0.55, 0.07, 0.11, 0.075, 0], [-1.55, 0.30, 0.06, 0.09, 0.070, 0], [-2.90, 0.75, 0.07, 0.10, 0.060, 0],
-  [-4.60, 0.42, 0.08, 0.10, 0.060, 0], [-0.90, -0.35, 0.07, 0.10, 0.070, 0], [-3.60, -0.60, 0.06, 0.09, 0.060, 0],
-  [-2.25, 0.20, 0.05, 0.08, 0.070, 0], [-5.9, 0.60, 0.07, 0.10, 0.060, 0],
-  [-1.25, 1.35, 0.10, 0.08, 0.012, 1], [-2.15, 1.10, 0.07, 0.06, 0.010, 1], [-0.55, 1.75, 0.08, 0.07, 0.010, 1],
-  [-3.30, 1.55, 0.09, 0.07, 0.010, 1], [-0.18, -1.10, 0.07, 0.11, 0.016, 1],
-].map((c, i) => {
+// Fossil damage: chipped keel/rib tips (kind 0, cut through) and flaked-off shell on the flanks (kind 1, matrix showing).
+// A few large chips are placed by hand (these are the largest allowed); the rest follow a power law so most are tiny and only show up close.
+// [angle back from the aperture, signed position around the tube (+ = face up), radius along/around, depth, kind]
+const BIG_CHIPS = [
+  [-0.30, 0.55, 0.07, 0.11, 0.075, 0], [-1.55, 0.30, 0.05, 0.08, 0.070, 0], [-0.90, -0.35, 0.06, 0.09, 0.070, 0],
+  [-1.25, 1.35, 0.10, 0.08, 0.012, 1], [-3.30, 1.55, 0.08, 0.07, 0.010, 1], [-0.18, -1.10, 0.06, 0.10, 0.016, 1],
+];
+function seeded(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const CHIP_LIST = (() => {
+  const rnd = seeded(20240930), list = BIG_CHIPS.map((c) => c.slice());
+  for (let n = 0; n < 70; n++) {
+    const flake = rnd() < 0.5;
+    const ax = Math.max(0.010, 0.085 * Math.pow(rnd(), 2.6));                       // mostly small, few medium
+    const ay = ax * (0.8 + 0.7 * rnd());
+    const ts = flake ? (rnd() * 2 - 1) * 1.9 : (rnd() < 0.5 ? 1 : -1) * (0.05 + rnd() * 0.85);
+    const depth = flake ? 0.006 + 0.008 * rnd() : 0.04 + 0.03 * rnd();
+    list.push([-rnd() * 7.0, ts, ax, ay, depth, flake ? 1 : 0]);
+  }
+  return list;
+})().map((c, i) => {
   const th = TH_E + c[0], R = Ro(th), sz = Math.pow(R, 0.7);
   return { th, ts: c[1], ka: R * (1 - RATIO / 2), kp: R * RATIO * 0.25 * (1 + WIDTH_K), ax: c[2] * sz, ay: c[3] * sz, depth: c[4], kind: c[5], seed: i * 13.7 };
 });
@@ -331,36 +342,31 @@ function buildShell() {
   return { geo, thEnd, NP };
 }
 
-// Broken end: thin pearly wall, then the hollow tube of the last chamber running back into the shell, closed by a dished septum
+// Broken end, as on real iridescent ammonites: a thin nacre wall, and inside it the chamber is filled with rock matrix
+// whose rough fracture surface sits a little below the shell edge.
 function buildCap(thEnd, NP) {
-  const K1 = 16, K2 = 12, cols = NP + 1, rings = K1 + K2 + 2;
-  const DEP1 = 0.62, DISH = 0.4, thMean = TH_E - 0.14;
+  const K = 26, cols = NP + 1, rings = K + 2, thMean = TH_E - 0.14;
   const pos = new Float32Array(rings * cols * 3), col = new Float32Array(rings * cols * 3);
   let p = 0;
   for (let k = 0; k < rings; k++) {
     for (let i = 0; i < cols; i++) {
       const phi = (i / NP) * TAU, c = Math.cos(phi), s = Math.sin(phi);
       let th, scale, r, g, b;
-      const nz = noise3(c * 3 + k * 0.3, s * 3, k * 0.17 + 2.2);
-      if (k <= K1 + 1) {                                    // wall thickness lip, then inner wall of the tube
-        const f = Math.max(0, k - 1) / K1;
-        const jag = sstep(0, 0.6, f);
-        th = mix(thEnd[i], thMean, jag) - (k === 0 ? 0 : 0.008 + DEP1 * f) - 0.03 * f * (nz - 0.5);
-        scale = k === 0 ? 0.99 : 0.955 - 0.02 * f;
-        if (k <= 1) { r = 0.78; g = 0.72; b = 0.62; }
-        else {
-          const m = 0.11 + 0.08 * noise3(c * 5, s * 5, f * 7) + 0.04 * noise3(c * 18, s * 18, f * 25);
-          const dark = Math.pow(1 - f, 2.2) * 0.75 + 0.05;  // deep inside is nearly black
-          r = m * 1.0 * dark; g = m * 0.85 * dark; b = m * 0.78 * dark;
-        }
-      } else {                                              // septum
-        const f = (k - K1 - 1) / (K2);
-        const dish = 1 - (1 - f) * (1 - f);
-        th = thMean - DEP1 - 0.008 - DISH * dish + 0.05 * f * (nz - 0.5);
-        scale = Math.max(0.012, 0.935 * (1 - f));
-        const m = 0.09 + 0.07 * noise3(c * 6, s * 6, f * 9) + 0.04 * noise3(c * 22, s * 22, f * 30);
-        const suture = Math.pow(Math.abs(Math.sin(f * 20 + nz * 2.5)), 8);
-        r = (m * 0.7 + 0.03 * suture) * 0.35; g = (m * 0.55 + 0.02 * suture) * 0.35; b = (m * 0.45 + 0.015 * suture) * 0.35;
+      if (k <= 1) {                                         // wall thickness of the shell
+        th = thEnd[i] - (k === 0 ? 0 : 0.012);
+        scale = k === 0 ? 0.992 : 0.972;
+        r = 0.80; g = 0.75; b = 0.66;
+      } else {
+        const f = (k - 1) / K, e = sstep(0, 0.18, f) * (1 - sstep(0.55, 1.0, f));
+        const lowN = noise3(c * 1.3 + f * 2.0, s * 1.3, f * 1.7 + 4.1);                 // broad undulation of the fracture
+        const midN = noise3(c * 5 + f * 6, s * 5, f * 5 + 8.3);
+        const jag = 1 - sstep(0, 0.5, f);
+        th = mix(thEnd[i], thMean, 1 - jag) - 0.03 - 0.045 * sstep(0, 0.18, f) - 0.11 * (lowN - 0.35) * e - 0.03 * (midN - 0.5) * e - 0.04 * f * f;
+        scale = Math.max(0.012, 0.972 * (1 - f * 0.985));
+        const m = 0.07 + 0.05 * noise3(c * 6, s * 6, f * 9) + 0.03 * noise3(c * 22, s * 22, f * 30);
+        r = m * 1.05; g = m * 0.88; b = m * 0.74;
+        const ao = 0.55 + 0.45 * sstep(0.0, 0.12, f);       // darker where the matrix meets the shell wall
+        r *= ao; g *= ao; b *= ao;
       }
       const sc = section(th, phi, scale);
       pos[p] = sc.rho * Math.cos(th); pos[p + 1] = sc.rho * Math.sin(th); pos[p + 2] = sc.z;
@@ -379,6 +385,41 @@ function buildCap(thEnd, NP) {
   geo.setIndex(idx);
   geo.computeVertexNormals();
   return geo;
+}
+
+// grit, speckle and calcite veins for the matrix, computed in object space so they stay sharp up close
+function patchMatrixShader(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vObjPos;
+float mh3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float mn3(vec3 p){
+  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(mh3(i), mh3(i + vec3(1,0,0)), f.x), mix(mh3(i + vec3(0,1,0)), mh3(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(mh3(i + vec3(0,0,1)), mh3(i + vec3(1,0,1)), f.x), mix(mh3(i + vec3(0,1,1)), mh3(i + vec3(1,1,1)), f.x), f.y), f.z);
+}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  vec3 gp = vObjPos * 170.0;
+  float gFade = 1.0 - smoothstep(0.08, 0.35, length(fwidth(gp)));
+  float g1 = mn3(gp), g2 = mn3(gp * 3.1 + 5.0);
+  float gh = (g1 * 0.6 + g2 * 0.4 - 0.5) * gFade;
+  float vein = (1.0 - smoothstep(0.0, 0.018, abs(mn3(vObjPos * 20.0) - 0.5))) * (1.0 - smoothstep(0.35, 0.6, vColor.r)) * step(0.6, mn3(vObjPos * 5.0));
+  float fleck = step(0.93, g2) * gFade;
+  diffuseColor.rgb *= 0.7 + 0.6 * (g1 * 0.5 + 0.5 * gFade * g2 + 0.5 * (1.0 - gFade));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.58, 0.50), clamp(vein * 0.45 + fleck * 0.5, 0.0, 0.6));`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  {
+    vec3 sx = normalize(dFdx(-vViewPosition)), sy = normalize(dFdy(-vViewPosition));
+    vec3 R1 = cross(sy, normal), R2 = cross(normal, sx);
+    float fDet = dot(sx, R1) * faceDirection;
+    vec2 dH = clamp(vec2(dFdx(gh), dFdy(gh)) * 1.6, -0.5, 0.5);
+    normal = normalize(abs(fDet) * normal - sign(fDet) * (dH.x * R1 + dH.y * R2));
+  }`);
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -506,6 +547,18 @@ vec3 voro(vec2 x){
   float dEdge = smoothstep(0.28, 0.42, dm0) * (1.0 - smoothstep(0.42, 0.58, dm0));
   float dGrain = vnoise(vSurf * 260.0);
   float microH = (0.4 * (1.0 - smoothstep(0.0, 0.55, mv.x)) - 0.6 * crack) * mFade + grain * 0.55 * gFade + dmg * (dGrain - 0.5) * 0.9;
+  // tiny pits and nicks in the shell, only resolvable when zoomed in
+  vec2 pq = vSurf / 0.05; vec2 pid = floor(pq), pf = fract(pq);
+  float pFade = 1.0 - smoothstep(0.08, 0.3, length(fwidth(pq)));
+  float pit = 0.0;
+  if (h21(pid + 13.1) < 0.32) {
+    vec2 pc = vec2(h21(pid + 3.3), h21(pid + 7.7)) * 0.6 + 0.2;
+    float pr = mix(0.05, 0.3, pow(h21(pid + 9.1), 2.0));
+    float pd = length(pf - pc) / pr * (1.0 + 0.6 * (vnoise(vSurf * 420.0) - 0.5));
+    pit = (1.0 - smoothstep(0.7, 1.0, pd)) * pFade;
+  }
+  dm0 = max(dm0, pit); dmg = max(dmg, smoothstep(0.4, 0.6, pit));
+  microH -= pit * 0.9;
   float cellRnd = (mv.z - 0.5) * mFade;
 `;
     sh.fragmentShader = sh.fragmentShader
@@ -653,7 +706,8 @@ function build() {
     envMapIntensity: 1.5, fog: false,
   });
   patchShellShader(shellMat);
-  const capMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.5, fog: false });
+  const capMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.35, fog: false });
+  patchMatrixShader(capMat);
   mats.push(shellMat);
 
   const { geo, thEnd, NP } = buildShell();
