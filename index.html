@@ -119,14 +119,13 @@ button.primary:hover{filter:brightness(1.06)}
 }
 .reveal .cap{font-size:18px;letter-spacing:.06em}
 
-/* ---- 裝飾：兩側（寬螢幕）／頁尾（窄螢幕） ---- */
+/* ---- 裝飾：寬螢幕時放在內容兩側 ---- */
 .deco{
-  position:fixed;top:50%;transform:translateY(-50%);z-index:0;
+  position:absolute;top:300px;z-index:0;
   display:none;flex-direction:column;gap:24px;width:168px;pointer-events:none;
 }
-.deco.left{right:calc(50% + 356px)}
-.deco.right{left:calc(50% + 356px)}
-.deco.right{margin-top:44px}
+.deco.left{right:calc(100% + 20px)}
+.deco.right{left:calc(100% + 20px);top:440px}
 .arch{
   display:block;width:100%;aspect-ratio:2/3;object-fit:cover;object-position:50% 14%;
   border-radius:999px 999px 12px 12px;
@@ -135,18 +134,38 @@ button.primary:hover{filter:brightness(1.06)}
   box-shadow:0 10px 26px rgba(0,0,0,.45);
   animation:float 7s ease-in-out infinite;
 }
-.deco .arch:nth-child(2),.strip .arch:nth-child(even){animation-delay:-3.5s}
-.strip{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
-  max-width:420px;margin:44px auto 0;
-}
-.strip .arch:nth-child(even){margin-top:14px}
-@media (min-width:1100px) and (min-height:640px){
-  .deco{display:flex}
-  .strip{display:none}
-}
+.deco .arch:nth-child(2){animation-delay:-3.5s}
+@media (min-width:1100px){.deco{display:flex}}
 
-.footer{margin-top:32px;text-align:center;color:var(--mute);font-size:15px}
+/* ---- 頁尾：滿版大圖 ---- */
+.finale{
+  position:relative;isolation:isolate;overflow:hidden;
+  margin-top:8px;min-height:clamp(520px,130vw,760px);
+  display:flex;align-items:flex-end;justify-content:center;
+}
+.finale img{
+  position:absolute;inset:0;z-index:-2;width:100%;height:100%;
+  object-fit:cover;object-position:50% 24%;
+  -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 30%);
+          mask-image:linear-gradient(180deg,transparent 0,#000 30%);
+}
+@media (min-width:900px){
+  .finale img{ /* 寬螢幕：限制放大倍率，左右淡出到背景 */
+    left:50%;right:auto;width:min(100%,1060px);transform:translateX(-50%);
+    -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 30%),linear-gradient(90deg,transparent 0,#000 14%,#000 86%,transparent 100%);
+            mask-image:linear-gradient(180deg,transparent 0,#000 30%),linear-gradient(90deg,transparent 0,#000 14%,#000 86%,transparent 100%);
+    -webkit-mask-composite:source-in;
+            mask-composite:intersect;
+  }
+}
+.finale::after{ /* 底部壓暗，讓署名好讀 */
+  content:"";position:absolute;inset:0;z-index:-1;
+  background:linear-gradient(180deg,transparent 55%,rgba(16,14,38,.55) 82%,rgba(16,14,38,.9) 100%);
+}
+.footer{
+  padding:0 16px 32px;text-align:center;color:#e9e3f7;font-size:15px;
+  text-shadow:0 1px 12px rgba(0,0,0,.7);
+}
 
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
@@ -158,10 +177,10 @@ button.primary:hover{filter:brightness(1.06)}
 </head>
 <body>
 
-<div class="deco left" id="decoLeft" aria-hidden="true"></div>
-<div class="deco right" id="decoRight" aria-hidden="true"></div>
-
 <main class="wrap">
+
+  <div class="deco left" id="decoLeft" aria-hidden="true"></div>
+  <div class="deco right" id="decoRight" aria-hidden="true"></div>
 
   <header class="hero">
     <div class="crest"><img src="images/angel-5.jpg" alt="大天使麥可"></div>
@@ -185,10 +204,12 @@ button.primary:hover{filter:brightness(1.06)}
 
   <section id="result" aria-live="polite" hidden></section>
 
-  <div class="strip" id="strip" aria-hidden="true"></div>
-
-  <div class="footer">美波 Maple・和煦心靈訪談所<br>All Rights Reserved.</div>
 </main>
+
+<section class="finale">
+  <img src="images/angel-7.jpg" alt="">
+  <div class="footer">美波 Maple・和煦心靈訪談所<br>All Rights Reserved.</div>
+</section>
 
 <script>
 /* ============================================================
@@ -207,10 +228,9 @@ const PURPOSES = [
   /* 新增範例：,{ id:"heal", label:"療癒", word:"HEAL" } */
 ];
 
-/* 裝飾用的大天使麥可圖：寬螢幕放在左右兩側，窄螢幕排在頁尾 */
-const DECO_LEFT  = ["images/angel-6.jpg", "images/angel-2.jpg"];
-const DECO_RIGHT = ["images/angel-1.jpg", "images/angel-7.jpg"];
-const STRIP      = ["images/angel-6.jpg", "images/angel-2.jpg", "images/angel-7.jpg", "images/angel-1.jpg"];
+/* 裝飾用的大天使麥可圖：寬螢幕放在內容兩側。頁尾滿版大圖在 HTML 的 .finale 裡換 */
+const DECO_LEFT  = ["images/angel-6.jpg", "images/angel-1.jpg"];
+const DECO_RIGHT = ["images/angel-2.jpg"];
 
 /* ============================================================
    計算
@@ -277,7 +297,6 @@ function render(purpose, r) {
 /* ---- 初始化 ---- */
 DECO_LEFT.forEach(s => $("decoLeft").append(arch(s)));
 DECO_RIGHT.forEach(s => $("decoRight").append(arch(s)));
-STRIP.forEach(s => $("strip").append(arch(s)));
 
 PURPOSES.forEach(p => {
   const o = el("option", "", p.label + "（" + p.word + "）");
