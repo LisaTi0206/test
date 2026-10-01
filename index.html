@@ -39,8 +39,8 @@ body{
 /* ---- 標題區 ---- */
 .hero{text-align:center}
 .arches{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
-  max-width:460px;margin:0 auto 28px;
+  display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
+  max-width:540px;margin:0 auto 28px;
 }
 .arches img{
   display:block;width:100%;aspect-ratio:2/3;object-fit:cover;object-position:50% 14%;
@@ -48,7 +48,7 @@ body{
   border:1px solid var(--line);
   box-shadow:0 8px 22px rgba(0,0,0,.45);
 }
-.arches img:nth-child(even){margin-top:16px}
+.arches img:nth-child(even){margin-top:14px}
 h1{
   margin:0;font-size:clamp(30px,8vw,42px);letter-spacing:.14em;font-weight:700;
   font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
@@ -98,10 +98,10 @@ button.primary:hover{filter:brightness(1.06)}
   animation:rise .6s ease both;
 }
 .reveal .art{
-  margin:0;aspect-ratio:3/4;overflow:hidden;
+  margin:0;aspect-ratio:4/5;overflow:hidden;
   border-radius:999px 999px 12px 12px;border:1px solid var(--line);
 }
-.reveal .art img{width:100%;height:100%;object-fit:cover;object-position:50% 12%;display:block}
+.reveal .art img{width:100%;height:100%;object-fit:cover;object-position:46% 20%;display:block}
 .reveal .tag{color:var(--mute);letter-spacing:.12em;font-size:15px}
 .reveal .num{
   font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
@@ -188,6 +188,7 @@ td{font-family:"Noto Serif TC",serif;font-size:18px;vertical-align:top}
     <table id="lettertable"></table>
   </details>
 
+  <div class="footer">美波 Maple・和煦心靈訪談所<br>All Rights Reserved.</div>
 </main>
 
 <script>
@@ -210,7 +211,7 @@ const PURPOSES = [
     id: "protect",
     label: "守護",
     word: "PROTECT",
-    img: "images/angel-2.jpg",
+    img: "images/angel-5.jpg",
     meanings: { 1:"", 2:"", 3:"", 4:"", 5:"", 6:"", 7:"", 8:"", 9:"" }
   }
   /* 新增範例：
@@ -218,8 +219,9 @@ const PURPOSES = [
   */
 ];
 
-/* 標題區的天使拱門圖（想加圖就加一行路徑，建議一次放 4 張） */
+/* 標題區的天使拱門圖（想加圖就加一行路徑；排版是 5 張一排） */
 const HERO_IMAGES = [
+  "images/angel-5.jpg",
   "images/angel-1.jpg",
   "images/angel-2.jpg",
   "images/angel-3.jpg",
