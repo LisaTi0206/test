@@ -128,7 +128,7 @@
   <button id="btn-spin" type="button" aria-pressed="false">自動旋轉</button>
   <button id="btn-bg" type="button">桌面：紫絨</button>
   <button id="btn-lights" type="button" aria-pressed="true" aria-controls="lights">光源設定</button>
-  <label for="gloss">光澤 <input id="gloss" type="range" min="0.3" max="2.5" step="0.05" value="1.4"></label>
+  <label for="gloss">光澤 <input id="gloss" type="range" min="0.3" max="2.5" step="0.05" value="1.1"></label>
 </div>
 <aside id="lights" class="lights" aria-label="光源設定">
   <h2>光源</h2>
@@ -363,8 +363,8 @@ function buildCap(thEnd, NP) {
         const jag = 1 - sstep(0, 0.5, f);
         th = mix(thEnd[i], thMean, 1 - jag) - 0.03 - 0.045 * sstep(0, 0.18, f) - 0.11 * (lowN - 0.35) * e - 0.03 * (midN - 0.5) * e - 0.04 * f * f;
         scale = Math.max(0.012, 0.972 * (1 - f * 0.985));
-        const m = 0.07 + 0.05 * noise3(c * 6, s * 6, f * 9) + 0.03 * noise3(c * 22, s * 22, f * 30);
-        r = m * 1.05; g = m * 0.88; b = m * 0.74;
+        const m = 0.22 + 0.14 * noise3(c * 6, s * 6, f * 9) + 0.07 * noise3(c * 22, s * 22, f * 30);
+        r = m * 0.95; g = m * 0.68; b = m * 0.47;
         const ao = 0.55 + 0.45 * sstep(0.0, 0.12, f);       // darker where the matrix meets the shell wall
         r *= ao; g *= ao; b *= ao;
       }
@@ -409,14 +409,17 @@ float mn3(vec3 p){
   float gh = (g1 * 0.6 + g2 * 0.4 - 0.5) * gFade;
   float vein = (1.0 - smoothstep(0.0, 0.018, abs(mn3(vObjPos * 20.0) - 0.5))) * (1.0 - smoothstep(0.35, 0.6, vColor.r)) * step(0.6, mn3(vObjPos * 5.0));
   float fleck = step(0.93, g2) * gFade;
-  diffuseColor.rgb *= 0.7 + 0.6 * (g1 * 0.5 + 0.5 * gFade * g2 + 0.5 * (1.0 - gFade));
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.58, 0.50), clamp(vein * 0.45 + fleck * 0.5, 0.0, 0.6));`)
+  diffuseColor.rgb *= 0.45 + 1.1 * (g1 * 0.5 + 0.5 * gFade * g2 + 0.5 * (1.0 - gFade));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.58, 0.50), clamp(vein * 0.45 + fleck * 0.5, 0.0, 0.6));
+  float blue = smoothstep(0.66, 0.78, mn3(vObjPos * 7.0)) * (1.0 - smoothstep(0.35, 0.6, vColor.r * 1.6));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.46, 0.48), blue * 0.55);
+  diffuseColor.rgb *= 1.0 - 0.55 * step(0.8, g1) * gFade;       // dark specks`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   {
     vec3 sx = normalize(dFdx(-vViewPosition)), sy = normalize(dFdy(-vViewPosition));
     vec3 R1 = cross(sy, normal), R2 = cross(normal, sx);
     float fDet = dot(sx, R1) * faceDirection;
-    vec2 dH = clamp(vec2(dFdx(gh), dFdy(gh)) * 1.6, -0.5, 0.5);
+    vec2 dH = clamp(vec2(dFdx(gh), dFdy(gh)) * 2.6, -0.6, 0.6);
     normal = normalize(abs(fDet) * normal - sign(fDet) * (dH.x * R1 + dH.y * R2));
   }`);
   };
@@ -425,10 +428,10 @@ float mn3(vec3 p){
 /* ------------------------------------------------------------------ *
  *  Procedural nacre textures: colour, interference thickness, roughness, growth lines
  * ------------------------------------------------------------------ */
-const PAL = [
-  [0.00, 0.95, 0.52, 0.34], [0.14, 0.86, 0.26, 0.30], [0.28, 0.66, 0.42, 0.90],
-  [0.44, 0.22, 0.72, 0.96], [0.58, 0.28, 0.90, 0.72], [0.72, 0.68, 0.95, 0.52],
-  [0.86, 0.98, 0.84, 0.56], [1.00, 0.96, 0.52, 0.58],
+const PAL = [   // restrained: warm flash at the shoulder, teal/green on the flanks, cream toward the venter
+  [0.00, 0.93, 0.58, 0.42], [0.14, 0.90, 0.60, 0.66], [0.28, 0.74, 0.68, 0.86],
+  [0.44, 0.46, 0.76, 0.86], [0.58, 0.46, 0.86, 0.72], [0.72, 0.68, 0.88, 0.62],
+  [0.86, 0.94, 0.88, 0.68], [1.00, 0.90, 0.88, 0.82],
 ];
 function pal(x, out) {
   x = clamp01(x);
@@ -454,15 +457,16 @@ function buildTextures(renderer) {
       const x = mix(0.86 - 0.27 * t + 0.38 * (n1 - 0.5) + 0.12 * (n2 - 0.5) + 0.05 * Math.sin(th * 0.7), 0.5 + 0.2 * (n1 - 0.5) + 0.1 * (n2 - 0.5) - 0.12 * sstep(2.0, 3.1, t), inner * 0.75);   // near the centre: glowing teal with a warm ring at the shoulder
       pal(x, rgb);
       // pastel pearl under saturated interference colour; crests warmer and lighter, troughs deeper
-      let R = mix(0.78, rgb[0], 0.92), G = mix(0.78, rgb[1], 0.92), Bc = mix(0.74, rgb[2], 0.92);
-      R = mix(R, 1.0, 0.22 * rs); G = mix(G, 0.96, 0.22 * rs); Bc = mix(Bc, 0.86, 0.22 * rs);
-      const sh = 0.88 + 0.12 * mix(r.rib, 1, 0.3);
+      // grey-white nacre base; the colour shows mainly along the rib crests and in patches, the troughs stay pale
+      const w = clamp01(0.5 + 0.45 * rs + 0.25 * sstep(0.45, 0.8, n1 * 0.6 + n2 * 0.4));
+      let R = mix(0.74, rgb[0], w), G = mix(0.76, rgb[1], w), Bc = mix(0.74, rgb[2], w);
+      const sh = 0.8 + 0.14 * mix(r.rib, 1, 0.3);
       const o = (py * Wd + px) * 4;
       cCol[o] = Math.min(255, R * sh * 255); cCol[o + 1] = Math.min(255, G * sh * 255); cCol[o + 2] = Math.min(255, Bc * sh * 255); cCol[o + 3] = 255;
       const thick = 0.5 + 0.5 * Math.sin(2.4 * t + 6 * (n1 - 0.5) + 3 * (n2 - 0.5) + 1.6 * r.rib + th * 0.35);
       const tv = Math.min(255, thick * 255);
       cThk[o] = cThk[o + 1] = cThk[o + 2] = tv; cThk[o + 3] = 255;
-      const rough = clamp01(0.52 + 0.26 * (1 - r.rib) + 0.24 * (n3 - 0.5) - 0.24 * inner) * 255;   // oilier (smoother) toward the centre
+      const rough = clamp01(0.58 + 0.24 * (1 - r.rib) + 0.24 * (n3 - 0.5) - 0.12 * inner) * 255;   // oilier (smoother) toward the centre
       cRgh[o] = cRgh[o + 1] = cRgh[o + 2] = rough; cRgh[o + 3] = 255;
       const gl = 0.5 + 0.5 * Math.sin(r.ph * 5 + 2.5 * n2);
       const bump = clamp01(0.5 * gl * (0.4 + 0.6 * r.s) + 0.3 * n3 + 0.2 * r.rib) * 255;
@@ -558,13 +562,16 @@ vec3 voro(vec2 x){
     pit = (1.0 - smoothstep(0.7, 1.0, pd)) * pFade;
   }
   dm0 = max(dm0, pit); dmg = max(dmg, smoothstep(0.4, 0.6, pit));
+  // the innermost whorls are rock-filled moulds (the shell there has dissolved), as seen in the umbilicus of real specimens
+  float innerM = 1.0 - smoothstep(0.16, 0.24, vSurf.x * 0.21 + (vnoise(vSurf * 22.0) - 0.5) * 0.07);
+  dmg = max(dmg, innerM);
   microH -= pit * 0.9;
   float cellRnd = (mv.z - 0.5) * mFade;
 `;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + fnc)
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + setup)
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= (1.0 + cellRnd * 0.16) * (1.0 - 0.32 * crack) * (1.0 + grain * 0.18 * gFade);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13, 0.105, 0.09) * (0.55 + 1.1 * dGrain), dmg);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.86, 0.78), dEdge * 0.55);')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= (1.0 + cellRnd * 0.16) * (1.0 - 0.32 * crack) * (1.0 + grain * 0.18 * gFade);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.40, 0.30, 0.21) * (0.5 + 0.9 * dGrain), dmg);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.86, 0.78), dEdge * 0.55);')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(clamp(roughnessFactor + crack * 0.25 + grain * 0.22 * gFade, 0.08, 1.0), 0.95, dmg);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n  metalnessFactor *= (1.0 - dmg);')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n  normal = perturbNormalArb(-vViewPosition, normal, clamp(vec2(dFdx(microH), dFdy(microH)) * 0.9, -0.4, 0.4), faceDirection);')
@@ -698,12 +705,12 @@ function build() {
   const tex = buildTextures(renderer);
   const shellMat = new THREE.MeshPhysicalMaterial({
     map: tex.color, vertexColors: true,
-    roughness: 0.78, roughnessMap: tex.rough, metalness: 0.5,
+    roughness: 0.95, roughnessMap: tex.rough, metalness: 0.3,
     bumpMap: tex.bump, bumpScale: 2.2,
-    clearcoat: 0.12, clearcoatRoughness: 0.5,
-    iridescence: 1, iridescenceIOR: 1.9, iridescenceThicknessRange: [200, 800], iridescenceThicknessMap: tex.thick,
-    sheen: 0.5, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xd9c8ff),
-    envMapIntensity: 1.5, fog: false,
+    clearcoat: 0.04, clearcoatRoughness: 0.6,
+    iridescence: 1, iridescenceIOR: 1.85, iridescenceThicknessRange: [250, 700], iridescenceThicknessMap: tex.thick,
+    sheen: 0.25, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xe6e0f0),
+    envMapIntensity: 1.1, fog: false,
   });
   patchShellShader(shellMat);
   const capMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.35, fog: false });
