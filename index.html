@@ -16,6 +16,7 @@
   --mute:#b8b1cf;
   --line:rgba(230,198,127,.35);
   --err:#ffb4a8;
+  color-scheme:dark;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -25,6 +26,7 @@ body{
   color:var(--ink);
   line-height:1.8;
   background:
+    radial-gradient(ellipse 70% 360px at 50% 0,rgba(230,198,127,.16),transparent),
     radial-gradient(1.5px 1.5px at 12% 18%,rgba(255,255,255,.75),transparent),
     radial-gradient(1px 1px at 78% 12%,rgba(255,255,255,.6),transparent),
     radial-gradient(1.5px 1.5px at 90% 40%,rgba(255,255,255,.5),transparent),
@@ -32,23 +34,26 @@ body{
     radial-gradient(1.5px 1.5px at 62% 78%,rgba(255,255,255,.5),transparent),
     radial-gradient(1px 1px at 8% 88%,rgba(255,255,255,.6),transparent),
     linear-gradient(180deg,var(--bg) 0%,var(--bg2) 55%,#2b2250 100%);
+  background-color:var(--bg);
   min-height:100vh;
 }
-.wrap{max-width:640px;margin:0 auto;padding:36px 16px 56px}
+.wrap{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:36px 16px 48px}
 
-/* ---- 標題區 ---- */
+/* ---- 刊頭：單張主視覺 ---- */
 .hero{text-align:center}
-.arches{
-  display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
-  max-width:540px;margin:0 auto 28px;
+.crest{
+  position:relative;width:min(240px,62vw);margin:0 auto 26px;
 }
-.arches img{
-  display:block;width:100%;aspect-ratio:2/3;object-fit:cover;object-position:50% 14%;
-  border-radius:999px 999px 10px 10px;
-  border:1px solid var(--line);
-  box-shadow:0 8px 22px rgba(0,0,0,.45);
+.crest::before{ /* 外圈細拱線 */
+  content:"";position:absolute;inset:-9px;
+  border:1px solid var(--line);border-radius:999px 999px 18px 18px;
 }
-.arches img:nth-child(even){margin-top:14px}
+.crest img{
+  display:block;width:100%;aspect-ratio:5/6;object-fit:cover;object-position:46% 18%;
+  border-radius:999px 999px 12px 12px;
+  border:1px solid var(--gold-deep);
+  box-shadow:0 0 60px rgba(230,198,127,.32),0 12px 30px rgba(0,0,0,.45);
+}
 h1{
   margin:0;font-size:clamp(30px,8vw,42px);letter-spacing:.14em;font-weight:700;
   font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
@@ -76,7 +81,7 @@ input,select{
   background:#f8f2e4;color:#241f3d;
 }
 input::placeholder{color:#8c86a3}
-input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{
+input:focus-visible,select:focus-visible,button:focus-visible{
   outline:3px solid var(--gold);outline-offset:2px;
 }
 button.primary{
@@ -88,81 +93,78 @@ button.primary:hover{filter:brightness(1.06)}
 .hint{margin:10px 0 0;color:var(--mute);font-size:14px}
 .error{margin:14px 0 0;color:var(--err);font-weight:700;min-height:1.8em}
 
-/* ---- 結果 ---- */
+/* ---- 結果：太陽徽章 ---- */
 #result{margin-top:28px}
 .reveal{
-  display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:18px;align-items:center;
-  padding:22px;
+  padding:30px 22px 28px;text-align:center;
   background:var(--card);border:1px solid var(--line);border-radius:20px;
   box-shadow:0 14px 40px rgba(0,0,0,.4);
   animation:rise .6s ease both;
 }
-.reveal .art{
-  margin:0;aspect-ratio:4/5;overflow:hidden;
-  border-radius:999px 999px 12px 12px;border:1px solid var(--line);
+.reveal .tag{color:var(--mute);letter-spacing:.14em;font-size:15px}
+.medal{
+  width:min(210px,62vw);aspect-ratio:1;margin:18px auto 16px;
+  display:grid;place-items:center;border-radius:50%;
+  border:1px solid var(--gold);
+  background:radial-gradient(circle at 50% 38%,rgba(230,198,127,.30),rgba(230,198,127,.06) 70%);
+  box-shadow:
+    0 0 0 8px rgba(230,198,127,.07),
+    0 0 0 9px var(--line),
+    0 0 54px rgba(230,198,127,.38);
 }
-.reveal .art img{width:100%;height:100%;object-fit:cover;object-position:46% 20%;display:block}
-.reveal .tag{color:var(--mute);letter-spacing:.12em;font-size:15px}
-.reveal .num{
+.medal .num{
   font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
-  font-size:clamp(84px,24vw,128px);line-height:1.05;font-weight:700;
-  color:var(--gold);text-shadow:0 0 28px rgba(230,198,127,.5);
+  font-size:clamp(96px,26vw,124px);line-height:1;font-weight:700;
+  color:var(--gold);text-shadow:0 0 26px rgba(230,198,127,.55);
 }
-.reveal .cap{font-size:17px}
+.reveal .cap{font-size:18px;letter-spacing:.06em}
 
-.meaning{
-  margin-top:16px;padding:18px 20px;border-left:5px solid var(--gold-deep);
-  background:rgba(255,248,232,.07);border-radius:10px;font-size:18px;white-space:pre-line;
-  animation:rise .6s .1s ease both;
+/* ---- 裝飾：兩側（寬螢幕）／頁尾（窄螢幕） ---- */
+.deco{
+  position:fixed;top:50%;transform:translateY(-50%);z-index:0;
+  display:none;flex-direction:column;gap:24px;width:168px;pointer-events:none;
+}
+.deco.left{right:calc(50% + 356px)}
+.deco.right{left:calc(50% + 356px)}
+.deco.right{margin-top:44px}
+.arch{
+  display:block;width:100%;aspect-ratio:2/3;object-fit:cover;object-position:50% 14%;
+  border-radius:999px 999px 12px 12px;
+  border:1px solid var(--line);
+  opacity:.88;
+  box-shadow:0 10px 26px rgba(0,0,0,.45);
+  animation:float 7s ease-in-out infinite;
+}
+.deco .arch:nth-child(2),.strip .arch:nth-child(even){animation-delay:-3.5s}
+.strip{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+  max-width:420px;margin:44px auto 0;
+}
+.strip .arch:nth-child(even){margin-top:14px}
+@media (min-width:1100px) and (min-height:640px){
+  .deco{display:flex}
+  .strip{display:none}
 }
 
-.calc{
-  margin-top:16px;padding:22px;
-  background:var(--card);border:1px solid var(--line);border-radius:20px;
-  animation:rise .6s .15s ease both;
-}
-.calc h2{margin:0 0 12px;font-size:17px;color:var(--gold);letter-spacing:.1em}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 16px}
-.chip{
-  min-width:34px;padding:2px 6px;text-align:center;line-height:1.3;
-  border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.05);
-}
-.chip b{display:block;font-size:17px;font-family:"Noto Serif TC",serif}
-.chip span{display:block;font-size:15px;color:var(--gold)}
-.row{margin:0 0 10px;font-size:18px;overflow-wrap:anywhere}
-.row small{display:block;color:var(--mute);font-size:14px}
-.eq{font-variant-numeric:tabular-nums;letter-spacing:.02em}
-button.ghost{
-  margin-top:8px;width:auto;padding:8px 16px;font-size:15px;cursor:pointer;
-  background:transparent;color:var(--gold);border:1px solid var(--line);
-}
-button.ghost:hover{background:rgba(230,198,127,.1)}
-
-details{
-  margin-top:20px;padding:14px 18px;
-  background:var(--card);border:1px solid var(--line);border-radius:16px;
-}
-summary{cursor:pointer;font-weight:700;color:var(--gold);letter-spacing:.08em}
-table{width:100%;border-collapse:collapse;margin-top:14px;text-align:center}
-th,td{border:1px solid var(--line);padding:4px 2px}
-th{color:var(--gold);font-family:"Noto Serif TC",serif}
-td{font-family:"Noto Serif TC",serif;font-size:18px;vertical-align:top}
-
-.footer{margin-top:36px;text-align:center;color:var(--mute);font-size:15px}
+.footer{margin-top:32px;text-align:center;color:var(--mute);font-size:15px}
 
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.reveal,.meaning,.calc{animation:none}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@media (prefers-reduced-motion:reduce){.reveal{animation:none}.arch{animation:none}}
 @media (max-width:420px){
-  .card,.calc,.reveal{padding:18px 16px}
-  .reveal{gap:12px}
+  .card,.reveal{padding-left:16px;padding-right:16px}
 }
 </style>
 </head>
 <body>
+
+<div class="deco left" id="decoLeft" aria-hidden="true"></div>
+<div class="deco right" id="decoRight" aria-hidden="true"></div>
+
 <main class="wrap">
 
   <header class="hero">
-    <div class="arches" id="arches" aria-hidden="true"></div>
+    <div class="crest"><img src="images/angel-5.jpg" alt="大天使麥可"></div>
     <h1>天使魔法密數</h1>
     <p class="sub">輸入你的英文名字，揭曉屬於你的魔法密數</p>
     <div class="divider"></div>
@@ -171,7 +173,7 @@ td{font-family:"Noto Serif TC",serif;font-size:18px;vertical-align:top}
   <form class="card" id="form" novalidate>
     <label for="name">✨ 英文名字</label>
     <input id="name" type="text" autocomplete="off" autocapitalize="characters"
-           placeholder="例如：LISA TI 或 LI,KAI-CHAN" aria-describedby="hint err">
+           placeholder="輸入護照上的英文名" aria-describedby="hint err">
 
     <label for="purpose">🕊️ 魔法目的</label>
     <select id="purpose"></select>
@@ -183,50 +185,32 @@ td{font-family:"Noto Serif TC",serif;font-size:18px;vertical-align:top}
 
   <section id="result" aria-live="polite" hidden></section>
 
-  <details>
-    <summary>字母對應表</summary>
-    <table id="lettertable"></table>
-  </details>
+  <div class="strip" id="strip" aria-hidden="true"></div>
 
   <div class="footer">美波 Maple・和煦心靈訪談所<br>All Rights Reserved.</div>
 </main>
 
 <script>
 /* ============================================================
-   設定區：之後要新增圖片或新的魔法目的，只需要改這裡
+   設定區：之後要新增魔法目的或換裝飾圖，只需要改這裡
    ============================================================ */
 
-/* 字母對應數字（來自對照表） */
+/* 字母對應數字 */
 const LETTERS = {
   1:"AIQJY", 2:"BKR", 3:"CGLS", 4:"DMT",
   5:"EHN",   6:"UVWX", 7:"OZ",  8:"FP"
 };
 
-/* 魔法目的：下拉選單的選項。
-   word     = 該目的的英文關鍵字，程式會用對照表自動算出它的數字（PROTECT = 33）
-   img      = 結果頁顯示的天使圖
-   meanings = 各個密數（1～9）的解讀文字，先留空，之後填入即可顯示 */
+/* 魔法目的（下拉選單）。word = 該目的的英文關鍵字，程式會自動算出它的數字（PROTECT = 33） */
 const PURPOSES = [
-  {
-    id: "protect",
-    label: "守護",
-    word: "PROTECT",
-    img: "images/angel-5.jpg",
-    meanings: { 1:"", 2:"", 3:"", 4:"", 5:"", 6:"", 7:"", 8:"", 9:"" }
-  }
-  /* 新增範例：
-  ,{ id:"heal", label:"療癒", word:"HEAL", img:"images/angel-4.jpg", meanings:{} }
-  */
+  { id: "protect", label: "守護", word: "PROTECT" }
+  /* 新增範例：,{ id:"heal", label:"療癒", word:"HEAL" } */
 ];
 
-/* 標題區的天使拱門圖（想加圖就加一行路徑；排版是 5 張一排） */
-const HERO_IMAGES = [
-  "images/angel-6.jpg",
-  "images/angel-2.jpg",
-  "images/angel-5.jpg",
-  "images/angel-3.jpg",
-  "images/angel-7.jpg"
-];
+/* 裝飾用的大天使麥可圖：寬螢幕放在左右兩側，窄螢幕排在頁尾 */
+const DECO_LEFT  = ["images/angel-6.jpg", "images/angel-2.jpg"];
+const DECO_RIGHT = ["images/angel-1.jpg", "images/angel-7.jpg"];
+const STRIP      = ["images/angel-6.jpg", "images/angel-2.jpg", "images/angel-7.jpg", "images/angel-1.jpg"];
 
 /* ============================================================
    計算
@@ -238,25 +222,13 @@ for (const [n, letters] of Object.entries(LETTERS)) {
 
 const digitsOf = n => String(n).split("").map(Number);
 const add = arr => arr.reduce((a, b) => a + b, 0);
+const wordSum = word => add(word.split("").map(c => MAP[c]));
 
-/* 英文字串 → 字母陣列與對應數字 */
-function lettersToNumbers(word) {
-  const chars = word.split("");
-  return { chars, nums: chars.map(c => MAP[c]) };
-}
-
-/* 第二行：把關鍵字總和與名字總和的每個位數拆開加總，
-   若結果是兩位數以上，就繼續拆開加總到個位數 */
-function reduceToSingle(keywordSum, nameSum) {
-  let digits = digitsOf(keywordSum).concat(digitsOf(nameSum));
-  let total = add(digits);
-  const steps = [digits.join("+") + "=" + total];
-  while (total > 9) {
-    digits = digitsOf(total);
-    total = add(digits);
-    steps.push(digits.join("+") + "=" + total);
-  }
-  return { steps, final: total };
+/* 關鍵字總和與名字總和，每個位數拆開加總，若仍是兩位數以上就繼續拆到個位數 */
+function magicNumber(keywordSum, nameSum) {
+  let total = add(digitsOf(keywordSum).concat(digitsOf(nameSum)));
+  while (total > 9) total = add(digitsOf(total));
+  return total;
 }
 
 /* 清理輸入：全形轉半形、轉大寫、移除空格與常見符號 */
@@ -268,13 +240,7 @@ function compute(rawName, purpose) {
   const name = cleanName(rawName);
   if (!name) return { error: "請輸入英文名字。" };
   if (/[^A-Z]/.test(name)) return { error: "請只輸入英文字母（空格、逗號、連字號可以保留）。" };
-
-  const kw = lettersToNumbers(purpose.word);
-  const nm = lettersToNumbers(name);
-  const keywordSum = add(kw.nums);
-  const nameSum = add(nm.nums);
-  const { steps, final } = reduceToSingle(keywordSum, nameSum);
-  return { name, kw, nm, keywordSum, nameSum, steps, final };
+  return { final: magicNumber(wordSum(purpose.word), wordSum(name)) };
 }
 
 /* ============================================================
@@ -289,84 +255,29 @@ function el(tag, cls, text) {
   return e;
 }
 
-function chipsFor(part) {
-  const box = el("div", "chips");
-  part.chars.forEach((c, i) => {
-    const chip = el("div", "chip");
-    chip.append(el("b", "", c), el("span", "", String(part.nums[i])));
-    box.append(chip);
-  });
-  return box;
+function arch(src) {
+  const i = el("img", "arch"); i.src = src; i.alt = ""; return i;
 }
 
-function eq(nums, sum) { return nums.join("+") + "=" + sum; }
-
-function render(purpose, r, rawName) {
+function render(purpose, r) {
   const box = $("result");
-  box.replaceChildren();
-
-  /* 揭曉區 */
   const reveal = el("div", "reveal");
-  const fig = el("figure", "art");
-  const img = el("img");
-  img.src = purpose.img; img.alt = "";
-  fig.append(img);
-  const side = el("div");
-  side.append(
+  const medal = el("div", "medal");
+  medal.append(el("div", "num", String(r.final)));
+  reveal.append(
     el("div", "tag", purpose.label + " · " + purpose.word),
-    el("div", "num", String(r.final)),
+    medal,
     el("div", "cap", "你的" + purpose.label + "魔法密數")
   );
-  reveal.append(fig, side);
-  box.append(reveal);
-
-  /* 解讀（有填才顯示） */
-  const meaning = purpose.meanings && purpose.meanings[r.final];
-  if (meaning) box.append(el("div", "meaning", meaning));
-
-  /* 計算過程 */
-  const calc = el("div", "calc");
-  calc.append(el("h2", "", "計算過程"));
-
-  calc.append(el("div", "row", "你的名字：" + r.name));
-  calc.append(chipsFor(r.nm));
-
-  const line1 = el("p", "row");
-  line1.append(el("small", "", "第一行｜名字的字母數字加總"));
-  line1.append(el("span", "eq", eq(r.nm.nums, r.nameSum)));
-  calc.append(line1);
-
-  const kwRow = el("p", "row");
-  kwRow.append(el("small", "", purpose.label + "（" + purpose.word + "）的關鍵數字"));
-  kwRow.append(el("span", "eq", eq(r.kw.nums, r.keywordSum)));
-  calc.append(kwRow);
-
-  const line2 = el("p", "row");
-  line2.append(el("small", "", "第二行｜" + r.keywordSum + " 與 " + r.nameSum + " 的每個位數拆開加總，直到個位數"));
-  line2.append(el("span", "eq", r.steps.join("，")));
-  calc.append(line2);
-
-  const copy = el("button", "ghost", "複製結果");
-  copy.type = "button";
-  copy.addEventListener("click", () => {
-    const text = r.name + "｜" + purpose.label + "魔法密數：" + r.final + "\n" +
-      eq(r.nm.nums, r.nameSum) + "\n" + r.steps.join("，");
-    const done = () => { copy.textContent = "已複製 ✓"; setTimeout(() => copy.textContent = "複製結果", 1600); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done, () => {});
-    }
-  });
-  calc.append(copy);
-  box.append(calc);
-
+  box.replaceChildren(reveal);
   box.hidden = false;
   box.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /* ---- 初始化 ---- */
-HERO_IMAGES.forEach(src => {
-  const i = el("img"); i.src = src; i.alt = ""; $("arches").append(i);
-});
+DECO_LEFT.forEach(s => $("decoLeft").append(arch(s)));
+DECO_RIGHT.forEach(s => $("decoRight").append(arch(s)));
+STRIP.forEach(s => $("strip").append(arch(s)));
 
 PURPOSES.forEach(p => {
   const o = el("option", "", p.label + "（" + p.word + "）");
@@ -374,31 +285,17 @@ PURPOSES.forEach(p => {
   $("purpose").append(o);
 });
 
-/* 字母對應表 */
-(function buildTable() {
-  const t = $("lettertable");
-  const head = el("tr"), body = el("tr");
-  for (const [n, letters] of Object.entries(LETTERS)) {
-    head.append(el("th", "", n));
-    const td = el("td");
-    td.innerHTML = letters.split("").join("<br>"); /* 僅含固定字母，無外部輸入 */
-    body.append(td);
-  }
-  t.append(head, body);
-})();
-
 $("form").addEventListener("submit", e => {
   e.preventDefault();
   const purpose = PURPOSES.find(p => p.id === $("purpose").value);
-  const raw = $("name").value;
-  const r = compute(raw, purpose);
+  const r = compute($("name").value, purpose);
   if (r.error) {
     $("err").textContent = r.error;
     $("result").hidden = true;
     return;
   }
   $("err").textContent = "";
-  render(purpose, r, raw);
+  render(purpose, r);
 });
 </script>
 </body>
