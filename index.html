@@ -37,6 +37,11 @@ body{
   background-color:var(--bg);
   min-height:100vh;
 }
+.lace{ /* 花邊底紋：極淡的金色，鋪滿整頁 */
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:url(images/lace-tile.png) 0 0/132px 132px;
+  opacity:.075;
+}
 .wrap{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:36px 16px 48px}
 
 /* ---- 刊頭：單張主視覺 ---- */
@@ -103,19 +108,25 @@ button.primary:hover{filter:brightness(1.06)}
 }
 .reveal .tag{color:var(--mute);letter-spacing:.14em;font-size:15px}
 .medal{
-  width:min(210px,62vw);aspect-ratio:1;margin:18px auto 16px;
-  display:grid;place-items:center;border-radius:50%;
-  border:1px solid var(--gold);
-  background:radial-gradient(circle at 50% 38%,rgba(230,198,127,.30),rgba(230,198,127,.06) 70%);
-  box-shadow:
-    0 0 0 8px rgba(230,198,127,.07),
-    0 0 0 9px var(--line),
-    0 0 54px rgba(230,198,127,.38);
+  position:relative;container-type:inline-size;
+  width:min(300px,80vw);aspect-ratio:1;margin:10px auto 4px;
+  display:grid;place-items:center;
+}
+.medal::before{ /* 太陽後面的暖光 */
+  content:"";position:absolute;inset:6%;border-radius:50%;
+  background:radial-gradient(circle,rgba(230,198,127,.42),rgba(230,198,127,0) 68%);
+  filter:blur(14px);
+}
+.medal img{
+  position:absolute;inset:0;width:100%;height:100%;
+  animation:spin 140s linear infinite;
 }
 .medal .num{
+  position:relative;
   font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
-  font-size:clamp(96px,26vw,124px);line-height:1;font-weight:700;
-  color:var(--gold);text-shadow:0 0 26px rgba(230,198,127,.55);
+  font-size:clamp(64px,22vw,100px);font-size:33cqw;
+  line-height:1;font-weight:700;color:var(--bg);
+  text-shadow:0 1px 0 rgba(255,255,255,.28);
 }
 .reveal .cap{font-size:18px;letter-spacing:.06em}
 
@@ -168,14 +179,16 @@ button.primary:hover{filter:brightness(1.06)}
 }
 
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-@media (prefers-reduced-motion:reduce){.reveal{animation:none}.arch{animation:none}}
+@media (prefers-reduced-motion:reduce){.reveal{animation:none}.arch,.medal img{animation:none}}
 @media (max-width:420px){
   .card,.reveal{padding-left:16px;padding-right:16px}
 }
 </style>
 </head>
 <body>
+<div class="lace" aria-hidden="true"></div>
 
 <main class="wrap">
 
@@ -283,7 +296,8 @@ function render(purpose, r) {
   const box = $("result");
   const reveal = el("div", "reveal");
   const medal = el("div", "medal");
-  medal.append(el("div", "num", String(r.final)));
+  const sun = el("img"); sun.src = "images/sun.png"; sun.alt = "";
+  medal.append(sun, el("div", "num", String(r.final)));
   reveal.append(
     el("div", "tag", purpose.label + " · " + purpose.word),
     medal,
