@@ -128,7 +128,7 @@
   <button id="btn-spin" type="button" aria-pressed="false">自動旋轉</button>
   <button id="btn-bg" type="button">桌面：紫絨</button>
   <button id="btn-lights" type="button" aria-pressed="true" aria-controls="lights">光源設定</button>
-  <label for="gloss">光澤 <input id="gloss" type="range" min="0.3" max="2.5" step="0.05" value="1.1"></label>
+  <label for="gloss">光澤 <input id="gloss" type="range" min="0.3" max="2.5" step="0.05" value="1.0"></label>
 </div>
 <aside id="lights" class="lights" aria-label="光源設定">
   <h2>光源</h2>
@@ -162,7 +162,6 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { HorizontalBlurShader } from 'three/addons/shaders/HorizontalBlurShader.js';
 import { VerticalBlurShader } from 'three/addons/shaders/VerticalBlurShader.js';
 import * as CANNON from 'cannon-es';
@@ -172,14 +171,14 @@ import * as CANNON from 'cannon-es';
  * ------------------------------------------------------------------ */
 const TAU = Math.PI * 2;
 const TURNS = 3.6;                    // whorls shown
-const W_PER_TURN = 2.4;               // radius growth per whorl
+const W_PER_TURN = 2.6;               // radius growth per whorl
 const B = Math.log(W_PER_TURN) / TAU;
 const TH_E = Math.PI;                 // aperture points to the left, as in the photo
 const TH_S = TH_E - TURNS * TAU;
-const RATIO = 0.68;                   // whorl height / outer radius
-const WIDTH_K = 1.2;                 // half-width / half-height
+const RATIO = 0.76;                   // whorl height / outer radius (tightly involute, small umbilicus)
+const WIDTH_K = 0.86;                // half-width / half-height (compressed)
 const SUPER_N = 2.7;                  // flat flanks, rounded venter
-const NRIB = 26;                      // primary ribs per whorl
+const NRIB = 30;                      // primary ribs per whorl
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -201,17 +200,23 @@ function noise3(x, y, z) {
 
 // Cross-section of the tube at spiral angle th, point phi around it (scale shrinks it toward its centre).
 const sec = { rho: 0, z: 0, nr: 1, nz: 0, R: 1 };
+// Ogival whorl profile: flanks converge to a narrow, rounded venter; widest toward the umbilical shoulder.
+function prof(phi, h, wd, scale, o) {
+  const cx = Math.cos(phi), sz = Math.sin(phi);
+  const xr = cx;
+  const zr = Math.sign(sz) * Math.pow(Math.abs(sz), 0.82) * (1 - 0.3 * cx) / 1.12;
+  o[0] = h * xr * scale; o[1] = wd * zr * scale;
+}
+const _p0 = [0, 0], _p1 = [0, 0];
 function section(th, phi, scale) {
   const R = Ro(th), h = RATIO * R * 0.5, c = R - h, wd = WIDTH_K * h;
-  const cx = Math.cos(phi), sz = Math.sin(phi), e = 2 / SUPER_N;
-  const xr = Math.sign(cx) * Math.pow(Math.abs(cx), e);
-  const zr = Math.sign(sz) * Math.pow(Math.abs(sz), e);
-  sec.rho = c + h * xr * scale;
-  sec.z = wd * zr * scale;
-  const gr = Math.sign(xr) * Math.pow(Math.abs(xr), SUPER_N - 1) / h;
-  const gz = Math.sign(zr) * Math.pow(Math.abs(zr), SUPER_N - 1) / wd;
-  const m = Math.hypot(gr, gz) || 1;
-  sec.nr = gr / m; sec.nz = gz / m; sec.R = R;
+  prof(phi, h, wd, scale, _p0);
+  sec.rho = c + _p0[0]; sec.z = _p0[1];
+  const eps = 1e-3;
+  prof(phi + eps, h, wd, scale, _p0); prof(phi - eps, h, wd, scale, _p1);
+  const dr = _p0[0] - _p1[0], dz = _p0[1] - _p1[1];
+  const m = Math.hypot(dr, dz) || 1;
+  sec.nr = dz / m; sec.nz = -dr / m; sec.R = R;
   return sec;
 }
 
@@ -220,8 +225,8 @@ const rb = { ph: 0, rib: 0, s: 0, P1: 0 };
 function ribInfo(th, t) {
   const shift = 0.17 * Math.pow(1 - t / Math.PI, 1.3);          // ribs sweep forward toward the venter
   let ph = NRIB * (th - shift) + 1.3 * (noise3(th * 2.3, 4.4, 1.1) - 0.5);   // uneven rib spacing
-  const P1 = Math.pow(0.5 + 0.5 * Math.cos(ph), 2.2);
-  const P2 = 0.7 * Math.pow(0.5 + 0.5 * Math.cos(2 * ph), 2.2) * sstep(1.9, 1.1, t); // intercalated ribs on the outer flank
+  const P1 = Math.pow(0.5 + 0.5 * Math.cos(ph), 1.5);
+  const P2 = 0.7 * Math.pow(0.5 + 0.5 * Math.cos(2 * ph), 1.5) * sstep(1.9, 1.1, t); // intercalated ribs on the outer flank
   const amp = 0.7 + 0.5 * hash3(Math.floor(ph / TAU + 0.5) * 1.7, 3.1, 5.3);            // some ribs stronger than others
   rb.ph = ph; rb.P1 = P1; rb.rib = Math.max(P1, P2) * amp;
   rb.s = (0.3 + 0.7 * sstep(0.15, 0.9, t)) * (1 - sstep(2.3, 2.95, t));
@@ -294,14 +299,14 @@ function buildShell() {
       const g = 0.02 + 0.98 * sstep(TH_S, TH_S + 1.0, th);
       const s = section(th, phi, g);
       const r = ribInfo(thNom, t);
-      const keel = Math.exp(-((t / 0.11) ** 2));
+      const keel = Math.exp(-((t / 0.07) ** 2));
       const node = Math.exp(-(((t - 0.85) / 0.14) ** 2)) * Math.pow(r.P1, 3);
       const cph = Math.cos(phi), sph = Math.sin(phi);
-      let disp = s.R * g * (0.05 * r.rib * r.s + 0.026 * keel + 0.03 * node);
-      disp += s.R * g * 0.022 * (noise3(thNom * 1.7, cph * 1.3 + 5, sph * 1.3) - 0.5);      // slow undulation of a slightly crushed shell
+      let disp = s.R * g * (0.016 * r.rib * r.s + 0.010 * keel);
+      disp += s.R * g * 0.012 * (noise3(thNom * 1.7, cph * 1.3 + 5, sph * 1.3) - 0.5);      // slow undulation of a slightly crushed shell
       const ch = chipField(thNom, phi <= Math.PI ? phi : phi - TAU);
       if (ch.mask > 0) disp = mix(disp, Math.min(disp, s.R * ch.floor), ch.mask);
-      const wob = 1 + 0.03 * (noise3(thNom * 0.55, 1.3, 4.7) - 0.5);                          // uneven growth
+      const wob = 1 + 0.022 * (noise3(thNom * 0.55, 1.3, 4.7) - 0.5);                          // uneven growth
       const rho = (s.rho + disp * s.nr) * wob, z = (s.z + disp * s.nz) * (2 - wob);
       pos[p] = rho * Math.cos(th); pos[p + 1] = rho * Math.sin(th); pos[p + 2] = z;
       dmg[i + j * cols] = ch.mask;
@@ -428,10 +433,10 @@ float mn3(vec3 p){
 /* ------------------------------------------------------------------ *
  *  Procedural nacre textures: colour, interference thickness, roughness, growth lines
  * ------------------------------------------------------------------ */
-const PAL = [   // restrained: warm flash at the shoulder, teal/green on the flanks, cream toward the venter
-  [0.00, 0.93, 0.58, 0.42], [0.14, 0.90, 0.60, 0.66], [0.28, 0.74, 0.68, 0.86],
-  [0.44, 0.46, 0.76, 0.86], [0.58, 0.46, 0.86, 0.72], [0.72, 0.68, 0.88, 0.62],
-  [0.86, 0.94, 0.88, 0.68], [1.00, 0.90, 0.88, 0.82],
+const PAL = [   // like the reference: warm flash at the umbilical shoulder, teal/green over most of the flank, cream toward the venter
+  [0.00, 0.95, 0.50, 0.32], [0.12, 0.92, 0.55, 0.50], [0.26, 0.62, 0.66, 0.82],
+  [0.42, 0.28, 0.74, 0.86], [0.56, 0.28, 0.84, 0.72], [0.70, 0.52, 0.86, 0.60],
+  [0.86, 0.92, 0.86, 0.64], [1.00, 0.88, 0.85, 0.78],
 ];
 function pal(x, out) {
   x = clamp01(x);
@@ -454,22 +459,24 @@ function buildTextures(renderer) {
       const n2 = noise3(th * 4.0, c * 3 + 10, s * 3);
       const n3 = noise3(th * 14.0, c * 9 + 20, s * 9);
       const Rr = Ro(th), inner = 1 - sstep(0.08, 0.5, Rr);
-      const x = mix(0.86 - 0.27 * t + 0.38 * (n1 - 0.5) + 0.12 * (n2 - 0.5) + 0.05 * Math.sin(th * 0.7), 0.5 + 0.2 * (n1 - 0.5) + 0.1 * (n2 - 0.5) - 0.12 * sstep(2.0, 3.1, t), inner * 0.75);   // near the centre: glowing teal with a warm ring at the shoulder
-      pal(x, rgb);
-      // pastel pearl under saturated interference colour; crests warmer and lighter, troughs deeper
-      // grey-white nacre base; the colour shows mainly along the rib crests and in patches, the troughs stay pale
-      const w = clamp01(0.5 + 0.45 * rs + 0.25 * sstep(0.45, 0.8, n1 * 0.6 + n2 * 0.4));
-      let R = mix(0.74, rgb[0], w), G = mix(0.76, rgb[1], w), Bc = mix(0.74, rgb[2], w);
-      const sh = 0.8 + 0.14 * mix(r.rib, 1, 0.3);
+      const x = mix(0.92 - 0.3 * t + 0.2 * (n1 - 0.5) + 0.08 * (n2 - 0.5) + 0.04 * Math.sin(th * 0.7), 0.5 + 0.2 * (n1 - 0.5) + 0.1 * (n2 - 0.5) - 0.12 * sstep(2.0, 3.1, t), inner * 0.75);   // near the centre: glowing teal with a warm ring at the shoulder
+      const rh = hash3(Math.floor(r.ph / TAU + 0.5) * 1.3, 2.2, 7.1);       // every rib has its own tint, as if each growth band had a different film thickness
+      const xx = clamp01(x + 0.1 * (rh - 0.5));
+      pal(xx, rgb);
+      // grey-white nacre in the troughs, saturated structural colour concentrated along the rib crests
+      const crest = Math.pow(r.rib, 1.3) * r.s;
+      const w = clamp01(0.4 + 0.6 * crest + 0.3 * sstep(0.45, 0.8, n1 * 0.6 + n2 * 0.4));
+      let R = mix(0.7, rgb[0], w), G = mix(0.72, rgb[1], w), Bc = mix(0.7, rgb[2], w);
+      const sh = 0.84 + 0.16 * mix(r.rib, 1, 0.3);
       const o = (py * Wd + px) * 4;
       cCol[o] = Math.min(255, R * sh * 255); cCol[o + 1] = Math.min(255, G * sh * 255); cCol[o + 2] = Math.min(255, Bc * sh * 255); cCol[o + 3] = 255;
-      const thick = 0.5 + 0.5 * Math.sin(2.4 * t + 6 * (n1 - 0.5) + 3 * (n2 - 0.5) + 1.6 * r.rib + th * 0.35);
+      const thick = clamp01(0.5 + 0.32 * Math.sin(2.6 * t + 5 * (n1 - 0.5) + 2.5 * (n2 - 0.5)) + 0.3 * (r.rib - 0.5) + 0.25 * (rh - 0.5));
       const tv = Math.min(255, thick * 255);
       cThk[o] = cThk[o + 1] = cThk[o + 2] = tv; cThk[o + 3] = 255;
-      const rough = clamp01(0.58 + 0.24 * (1 - r.rib) + 0.24 * (n3 - 0.5) - 0.12 * inner) * 255;   // oilier (smoother) toward the centre
+      const rough = clamp01(0.46 + 0.22 * (1 - r.rib) + 0.2 * (n3 - 0.5) - 0.1 * inner) * 255;
       cRgh[o] = cRgh[o + 1] = cRgh[o + 2] = rough; cRgh[o + 3] = 255;
       const gl = 0.5 + 0.5 * Math.sin(r.ph * 5 + 2.5 * n2);
-      const bump = clamp01(0.5 * gl * (0.4 + 0.6 * r.s) + 0.3 * n3 + 0.2 * r.rib) * 255;
+      const bump = clamp01(0.45 * gl * (0.4 + 0.6 * r.s) + 0.25 * n3 + 0.3 * r.rib) * 255;
       cBmp[o] = cBmp[o + 1] = cBmp[o + 2] = bump; cBmp[o + 3] = 255;
     }
   }
@@ -513,7 +520,7 @@ function buildClothTexture(renderer) {
  *  Shell micro-texture (shader): ammolite "dragon-skin" scales, hairline cracks, fine grain.
  *  Works in physical surface units so the detail stays sharp when zooming in.
  * ------------------------------------------------------------------ */
-const CELL = 0.022;
+const CELL = 0.04;
 function patchShellShader(mat) {
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
@@ -542,7 +549,7 @@ vec3 voro(vec2 x){
   vec3 mv = voro(mq);
   float innerK = smoothstep(0.08, 0.4, vSurf.x * 0.21);
   float mFade = (1.0 - smoothstep(0.05, 0.2, length(fwidth(mq)))) * innerK;
-  float crack = (1.0 - smoothstep(0.01, 0.075, mv.y)) * mFade;
+  float crack = (1.0 - smoothstep(0.004, 0.04, mv.y)) * mFade;
   vec2 gq = vSurf * 320.0;
   float gFade = 1.0 - smoothstep(0.06, 0.28, length(fwidth(gq)));
   float grain = ((vnoise(gq) * 0.65 + vnoise(gq * 2.3 + 7.0) * 0.35) - 0.5) * mix(0.3, 1.0, innerK);
@@ -550,7 +557,7 @@ vec3 voro(vec2 x){
   float dmg = smoothstep(0.4, 0.6, dm0);
   float dEdge = smoothstep(0.28, 0.42, dm0) * (1.0 - smoothstep(0.42, 0.58, dm0));
   float dGrain = vnoise(vSurf * 260.0);
-  float microH = (0.4 * (1.0 - smoothstep(0.0, 0.55, mv.x)) - 0.6 * crack) * mFade + grain * 0.55 * gFade + dmg * (dGrain - 0.5) * 0.9;
+  float microH = (0.25 * (1.0 - smoothstep(0.0, 0.55, mv.x)) - 0.4 * crack) * mFade + grain * 0.55 * gFade + dmg * (dGrain - 0.5) * 0.9;
   // tiny pits and nicks in the shell, only resolvable when zoomed in
   vec2 pq = vSurf / 0.05; vec2 pid = floor(pq), pf = fract(pq);
   float pFade = 1.0 - smoothstep(0.08, 0.3, length(fwidth(pq)));
@@ -563,7 +570,7 @@ vec3 voro(vec2 x){
   }
   dm0 = max(dm0, pit); dmg = max(dmg, smoothstep(0.4, 0.6, pit));
   // the innermost whorls are rock-filled moulds (the shell there has dissolved), as seen in the umbilicus of real specimens
-  float innerM = 1.0 - smoothstep(0.16, 0.24, vSurf.x * 0.21 + (vnoise(vSurf * 22.0) - 0.5) * 0.07);
+  float innerM = 1.0 - smoothstep(0.2, 0.3, vSurf.x * 0.21 + (vnoise(vSurf * 22.0) - 0.5) * 0.07);
   dmg = max(dmg, innerM);
   microH -= pit * 0.9;
   float cellRnd = (mv.z - 0.5) * mFade;
@@ -571,13 +578,13 @@ vec3 voro(vec2 x){
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + fnc)
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + setup)
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= (1.0 + cellRnd * 0.16) * (1.0 - 0.32 * crack) * (1.0 + grain * 0.18 * gFade);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.40, 0.30, 0.21) * (0.5 + 0.9 * dGrain), dmg);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.86, 0.78), dEdge * 0.55);')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(clamp(roughnessFactor + crack * 0.25 + grain * 0.22 * gFade, 0.08, 1.0), 0.95, dmg);')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= (1.0 + cellRnd * 0.1) * (1.0 - 0.14 * crack) * (1.0 + grain * 0.18 * gFade);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.30, 0.225, 0.155) * (0.5 + 0.9 * dGrain), dmg);\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.86, 0.78), dEdge * 0.3);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(clamp(roughnessFactor + crack * 0.12 + grain * 0.15 * gFade, 0.08, 1.0), 0.95, dmg);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n  metalnessFactor *= (1.0 - dmg);')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n  normal = perturbNormalArb(-vViewPosition, normal, clamp(vec2(dFdx(microH), dFdy(microH)) * 0.9, -0.4, 0.4), faceDirection);')
       .replace('#include <lights_physical_fragment>', THREE.ShaderChunk.lights_physical_fragment.replace('material.iridescence = iridescence;', 'material.iridescence = iridescence * (1.0 - dmg);').replace(
         'material.iridescenceThickness = (iridescenceThicknessMaximum - iridescenceThicknessMinimum) * texture2D( iridescenceThicknessMap, vIridescenceThicknessMapUv ).g + iridescenceThicknessMinimum;',
-        'material.iridescenceThickness = (iridescenceThicknessMaximum - iridescenceThicknessMinimum) * clamp(texture2D( iridescenceThicknessMap, vIridescenceThicknessMapUv ).g + cellRnd * 0.75, 0.0, 1.0) + iridescenceThicknessMinimum;'));
+        'material.iridescenceThickness = (iridescenceThicknessMaximum - iridescenceThicknessMinimum) * clamp(texture2D( iridescenceThicknessMap, vIridescenceThicknessMapUv ).g + cellRnd * 0.45, 0.0, 1.0) + iridescenceThicknessMinimum;'));
   };
 }
 
@@ -590,7 +597,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setClearColor(0x000000, 0);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 0.9;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 stage.appendChild(renderer.domElement);
@@ -648,17 +655,28 @@ function applyBackdrop() {
 }
 
 let envTex = null, envTimer = 0;
+function buildStudio() {
+  const sc = new THREE.Scene();
+  sc.add(new THREE.Mesh(new THREE.SphereGeometry(40, 32, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.05, 0.048, 0.055), side: THREE.BackSide })));
+  const box = (w, h, x, y, z, k, col) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(k), side: THREE.DoubleSide }));
+    m.position.set(x, y, z); m.lookAt(0, 0, 0); sc.add(m);
+  };
+  box(14, 14, 0, 11, 1, 2.2, 0xffffff);          // overhead softbox
+  box(7, 9, -8, 5, 7, 5, 0xfff4e8);           // key, front left
+  box(3, 12, 9, 3, 3, 3.6, 0xdfeaff);            // cool strip, right
+  box(10, 3, -3, 5, -9, 4, 0xffe9d2);          // warm rim, behind
+  box(12, 2.5, 0, 1.2, 10, 1.0, 0xffffff);     // low fill, front
+  return sc;
+}
 function rebuildEnvironment() {
-  const room = new RoomEnvironment();
+  const room = buildStudio();
   const tint = WHITE.clone().lerp(L.color, 0.85);
-  room.traverse((o) => {
-    if (o.isLight) o.color.multiply(tint);
-    else if (o.isMesh && o.material && o.material.color) { o.material = o.material.clone(); o.material.color.multiply(tint); }
-  });
-  const tex = pmrem.fromScene(room, 0.03).texture;
+  room.traverse((o) => { if (o.isMesh) o.material.color.multiply(tint); });
+  const tex = pmrem.fromScene(room, 0.02).texture;
   if (envTex) envTex.dispose();
   envTex = tex; scene.environment = tex;
-  room.dispose && room.dispose();
+  room.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
 }
 function applyLight({ env = false } = {}) {
   const a = THREE.MathUtils.degToRad(L.az), e = THREE.MathUtils.degToRad(L.el);
@@ -710,7 +728,7 @@ function build() {
     clearcoat: 0.04, clearcoatRoughness: 0.6,
     iridescence: 1, iridescenceIOR: 1.85, iridescenceThicknessRange: [250, 700], iridescenceThicknessMap: tex.thick,
     sheen: 0.25, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xe6e0f0),
-    envMapIntensity: 1.1, fog: false,
+    envMapIntensity: 1.0, fog: false,
   });
   patchShellShader(shellMat);
   const capMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.35, fog: false });
@@ -762,7 +780,7 @@ function setupPhysics(model) {
   const com = new CANNON.Vec3(); let vol = 0;
   for (let th = TH_E - 0.2; Ro(th) > 0.09; th -= DTH) {
     const R = Ro(th), h = RATIO * R * 0.5, c = R - h;
-    const hx = h + 0.012 * R, hy = c * DTH * 0.51, hz = WIDTH_K * h + 0.035 * R;
+    const hx = h + 0.012 * R, hy = c * DTH * 0.51, hz = WIDTH_K * h * 1.1 + 0.02 * R;
     const ctr = new CANNON.Vec3(c * Math.cos(th), c * Math.sin(th), 0);
     const v = hx * hy * hz;
     com.x += ctr.x * v; com.y += ctr.y * v; vol += v;
