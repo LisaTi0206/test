@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>天使魔法密數</title>
 <meta name="description" content="輸入英文名字，推算屬於你的天使魔法密數。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Condensed&family=LXGW+WenKai+TC&display=swap">
 <style>
 :root{
   --bg:#100e26;
@@ -17,12 +20,18 @@
   --line:rgba(230,198,127,.35);
   --err:#ffb4a8;
   color-scheme:dark;
+  /* 英文與數字：Gloucester MT Extra Condensed；中文：華康歐陽詢體 W5。
+     裝置沒有安裝時，依序退回相近的免費字體（Libre Caslon Condensed、霞鶩文楷） */
+  --font:"Gloucester MT Extra Condensed","Gloucester MT","GloucesterMT-ExtraCondensed",
+         "Libre Caslon Condensed",
+         "華康歐陽詢體W5","華康歐陽詢體","DFOuYangXunTi-W5",
+         "LXGW WenKai TC","BiauKai","標楷體","Kaiti TC","DFKai-SB",serif;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0;
-  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  font-family:var(--font);font-weight:400;font-synthesis:none;font-size:18px;
   color:var(--ink);
   line-height:1.8;
   background:
@@ -60,12 +69,11 @@ body{
   box-shadow:0 0 60px rgba(230,198,127,.32),0 12px 30px rgba(0,0,0,.45);
 }
 h1{
-  margin:0;font-size:clamp(30px,8vw,42px);letter-spacing:.14em;font-weight:700;
-  font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  margin:0;font-size:clamp(36px,10vw,52px);letter-spacing:.14em;font-weight:400;
   color:var(--gold);
   text-shadow:0 2px 18px rgba(230,198,127,.35);
 }
-.sub{margin:8px 0 0;color:var(--mute);font-size:16px;letter-spacing:.08em}
+.sub{margin:8px 0 0;color:var(--mute);font-size:19px;text-wrap:balance;letter-spacing:.08em}
 .divider{width:64px;height:1px;margin:20px auto 0;background:var(--gold-deep)}
 
 /* ---- 輸入卡 ---- */
@@ -75,10 +83,10 @@ h1{
   border:1px solid var(--line);border-radius:20px;
   box-shadow:0 14px 40px rgba(0,0,0,.4);
 }
-label{display:block;font-weight:700;margin:0 0 6px}
+label{display:block;font-weight:400;font-size:20px;margin:0 0 6px}
 label + input,label + select{margin-bottom:18px}
 input,select,button{
-  width:100%;padding:14px;font-size:18px;font-family:inherit;
+  width:100%;padding:12px 14px;font-size:21px;font-family:inherit;
   border-radius:12px;
 }
 input,select{
@@ -90,13 +98,13 @@ input:focus-visible,select:focus-visible,button:focus-visible{
   outline:3px solid var(--gold);outline-offset:2px;
 }
 button.primary{
-  border:none;cursor:pointer;font-weight:700;letter-spacing:.1em;
+  border:none;cursor:pointer;font-weight:400;font-size:22px;letter-spacing:.14em;
   background:linear-gradient(180deg,#f0d78f,#c99a45);color:#2b2140;
   margin-top:4px;
 }
 button.primary:hover{filter:brightness(1.06)}
-.hint{margin:10px 0 0;color:var(--mute);font-size:14px}
-.error{margin:14px 0 0;color:var(--err);font-weight:700;min-height:1.8em}
+.hint{margin:10px 0 0;color:var(--mute);font-size:16px}
+.error{margin:14px 0 0;color:var(--err);font-weight:400;min-height:1.8em}
 
 /* ---- 結果：太陽徽章 ---- */
 #result{margin-top:28px}
@@ -106,7 +114,7 @@ button.primary:hover{filter:brightness(1.06)}
   box-shadow:0 14px 40px rgba(0,0,0,.4);
   animation:rise .6s ease both;
 }
-.reveal .tag{color:var(--mute);letter-spacing:.14em;font-size:15px}
+.reveal .tag{color:var(--mute);letter-spacing:.14em;font-size:18px}
 .medal{
   position:relative;container-type:inline-size;
   width:min(300px,80vw);aspect-ratio:1;margin:10px auto 4px;
@@ -123,12 +131,11 @@ button.primary:hover{filter:brightness(1.06)}
 }
 .medal .num{
   position:relative;
-  font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
-  font-size:clamp(64px,22vw,100px);font-size:33cqw;
-  line-height:1;font-weight:700;color:var(--bg);
+  font-size:clamp(72px,24vw,112px);font-size:40cqw;
+  line-height:1;font-weight:400;color:var(--bg);
   text-shadow:0 1px 0 rgba(255,255,255,.28);
 }
-.reveal .cap{font-size:18px;letter-spacing:.06em}
+.reveal .cap{font-size:22px;letter-spacing:.06em}
 
 /* ---- 裝飾：寬螢幕時放在內容兩側 ---- */
 .deco{
@@ -174,7 +181,7 @@ button.primary:hover{filter:brightness(1.06)}
   background:linear-gradient(180deg,transparent 55%,rgba(16,14,38,.55) 82%,rgba(16,14,38,.9) 100%);
 }
 .footer{
-  padding:0 16px 32px;text-align:center;color:#e9e3f7;font-size:15px;
+  padding:0 16px 32px;text-align:center;color:#e9e3f7;font-size:17px;
   text-shadow:0 1px 12px rgba(0,0,0,.7);
 }
 
