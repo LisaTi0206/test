@@ -490,7 +490,7 @@ function pal(x, out) {
 function buildTextures(renderer) {
   const Wd = 3072, Ht = 384;
   const cCol = new Uint8Array(Wd * Ht * 4), cThk = new Uint8Array(Wd * Ht * 4),
-        cRgh = new Uint8Array(Wd * Ht * 4), cBmp = new Uint8Array(Wd * Ht * 4);
+        cRgh = new Uint8Array(Wd * Ht * 4), cBmp = new Uint8Array(Wd * Ht * 4), cIri = new Uint8Array(Wd * Ht * 4);
   const rgb = [0, 0, 0];
   for (let py = 0; py < Ht; py++) {
     const phi = ((py + 0.5) / Ht) * TAU, t = tOf(phi), c = Math.cos(phi), s = Math.sin(phi);
@@ -502,20 +502,38 @@ function buildTextures(renderer) {
       const n3 = noise3(th * 14.0, c * 9 + 20, s * 9);
       const Rr = Ro(th), inner = 1 - sstep(0.08, 0.5, Rr);
       const x = mix(0.92 - 0.3 * t + 0.2 * (n1 - 0.5) + 0.08 * (n2 - 0.5) + 0.04 * Math.sin(th * 0.7), 0.5 + 0.2 * (n1 - 0.5) + 0.1 * (n2 - 0.5) - 0.12 * sstep(2.0, 3.1, t), inner * 0.75);   // near the centre: glowing teal with a warm ring at the shoulder
-      const rh = hash3(Math.floor(r.ph / TAU + 0.5) * 1.3, 2.2, 7.1);       // every rib has its own tint, as if each growth band had a different film thickness
-      const xx = clamp01(x + 0.1 * (rh - 0.5));
-      pal(xx, rgb);
-      // grey-white nacre in the troughs, saturated structural colour concentrated along the rib crests
+      const rh = hash3(Math.floor(r.ph / TAU + 0.5) * 1.3, 2.2, 7.1);
+      const n4 = noise3(th * 1.6 + 40, c * 2.2, s * 2.2), n5 = noise3(th * 1.1 + 70, c * 1.5, s * 1.5);
+      const n6 = noise3(th * 1.9, c * 2.6 + 30, s * 2.6), tv = t / Math.PI;
       const crest = Math.pow(r.rib, 1.3) * r.s;
-      const w = clamp01(0.4 + 0.6 * crest + 0.3 * sstep(0.45, 0.8, n1 * 0.6 + n2 * 0.4));
-      let R = mix(0.7, rgb[0], w), G = mix(0.72, rgb[1], w), Bc = mix(0.7, rgb[2], w);
-      const sh = 0.84 + 0.16 * mix(r.rib, 1, 0.3);
+      // --- dull nacre ground: grey pearl, warm beige mottling, mauve-brown toward the venter and in blotches
+      let bR = 0.79, bG = 0.77, bB = 0.73;
+      const mauve = clamp01(0.65 * sstep(0.4, 0.05, tv) + 0.55 * sstep(0.55, 0.8, n4));
+      bR = mix(bR, 0.54, mauve); bG = mix(bG, 0.44, mauve); bB = mix(bB, 0.45, mauve);
+      const beige = 0.5 * sstep(0.4, 0.72, n2);
+      bR = mix(bR, 0.72, beige); bG = mix(bG, 0.63, beige); bB = mix(bB, 0.53, beige);
+      const stain = 0.6 * sstep(0.66, 0.9, n6);                                         // rusty iron staining
+      bR = mix(bR, 0.52, 0.65 * stain); bG = mix(bG, 0.36, 0.65 * stain); bB = mix(bB, 0.22, 0.65 * stain);
+      const dirt = 0.6 + 0.4 * mix(r.rib, 1, 0.2);                                // grime settles in the furrows between ribs
+      const speck = 1;
+      // --- the fire: saturated structural colour only in patches, mostly on crests and around the umbilicus
+      const shoulder = sstep(1.95, 2.45, t) * (1 - sstep(2.8, 3.05, t));            // the strong red glow along the umbilical shoulder
+      const flash = clamp01(sstep(0.36, 0.72, n5 * 0.8 + 0.3 * crest + 0.45 * inner + 0.35 * shoulder) * (1 - 0.6 * stain) * (1 - 0.5 * mauve * (1 - inner)));
+      const patchHue = (n2 * 2.5 + n1 * 1.3) % 1;                                  // hue jumps from patch to patch, like play-of-colour
+      const xx = clamp01(x + 0.08 * (rh - 0.5) + 0.1 * (patchHue - 0.5) - 0.2 * shoulder * (1 - inner));
+      pal(xx, rgb);
+      const fw = 0.8 * flash;
+      const k = dirt * speck;
+      const R = mix(bR, rgb[0] * 1.06, fw) * k, G = mix(bG, rgb[1] * 1.06, fw) * k, Bc = mix(bB, rgb[2] * 1.06, fw) * k;
       const o = (py * Wd + px) * 4;
-      cCol[o] = Math.min(255, R * sh * 255); cCol[o + 1] = Math.min(255, G * sh * 255); cCol[o + 2] = Math.min(255, Bc * sh * 255); cCol[o + 3] = 255;
-      const thick = clamp01(0.5 + 0.32 * Math.sin(2.6 * t + 5 * (n1 - 0.5) + 2.5 * (n2 - 0.5)) + 0.3 * (r.rib - 0.5) + 0.25 * (rh - 0.5));
-      const tv = Math.min(255, thick * 255);
-      cThk[o] = cThk[o + 1] = cThk[o + 2] = tv; cThk[o + 3] = 255;
-      const rough = clamp01(0.46 + 0.22 * (1 - r.rib) + 0.2 * (n3 - 0.5) - 0.1 * inner) * 255;
+      cCol[o] = Math.min(255, R * 255); cCol[o + 1] = Math.min(255, G * 255); cCol[o + 2] = Math.min(255, Bc * 255); cCol[o + 3] = 255;
+      // film thickness in crisp mosaic patches, so the hue jumps rather than flowing smoothly
+      const thick = clamp01(0.5 + 0.3 * Math.sin(2.6 * t + 5 * (n1 - 0.5) + 2.5 * (n2 - 0.5)) + 0.22 * (r.rib - 0.5) + 0.15 * (rh - 0.5));
+      const tv8 = Math.min(255, thick * 255);
+      cThk[o] = cThk[o + 1] = cThk[o + 2] = tv8; cThk[o + 3] = 255;
+      const iri = (0.12 + 0.88 * flash) * 255;
+      cIri[o] = cIri[o + 1] = cIri[o + 2] = iri; cIri[o + 3] = 255;
+      const rough = clamp01(0.72 - 0.3 * flash + 0.15 * (n3 - 0.5) + 0.12 * stain + 0.08 * (1 - r.rib)) * 255;
       cRgh[o] = cRgh[o + 1] = cRgh[o + 2] = rough; cRgh[o + 3] = 255;
       const gl = 0.5 + 0.5 * Math.sin(r.ph * 5 + 2.5 * n2);
       const bump = clamp01(0.45 * gl * (0.4 + 0.6 * r.s) + 0.25 * n3 + 0.3 * r.rib) * 255;
@@ -531,7 +549,7 @@ function buildTextures(renderer) {
     tex.generateMipmaps = true; tex.anisotropy = aniso; tex.needsUpdate = true;
     return tex;
   };
-  return { color: mk(cCol, true), thick: mk(cThk, false), rough: mk(cRgh, false), bump: mk(cBmp, false) };
+  return { color: mk(cCol, true), thick: mk(cThk, false), rough: mk(cRgh, false), bump: mk(cBmp, false), iri: mk(cIri, false) };
 }
 
 // tileable woven-pile cloth
@@ -613,7 +631,7 @@ vec3 voro(vec2 x){
   }
   dm0 = max(dm0, pit); dmg = max(dmg, smoothstep(0.4, 0.6, pit));
   // the innermost whorls are rock-filled moulds (the shell there has dissolved), as seen in the umbilicus of real specimens
-  float innerM = 1.0 - smoothstep(0.2, 0.3, vSurf.x * 0.21 + (vnoise(vSurf * 22.0) - 0.5) * 0.07);
+  float innerM = 1.0 - smoothstep(0.1, 0.15, vSurf.x * 0.21 + (vnoise(vSurf * 22.0) - 0.5) * 0.07);
   dmg = max(dmg, innerM);
   microH -= pit * 0.9;
   // fracture hairlines running across the nacre in places; the pieces on either side tilt slightly, so the colour jumps
@@ -776,7 +794,7 @@ function build() {
     roughness: 0.95, roughnessMap: tex.rough, metalness: 0.3,
     bumpMap: tex.bump, bumpScale: 2.2,
     clearcoat: 0.04, clearcoatRoughness: 0.6,
-    iridescence: 1, iridescenceIOR: 1.85, iridescenceThicknessRange: [250, 700], iridescenceThicknessMap: tex.thick,
+    iridescence: 1, iridescenceIOR: 1.85, iridescenceThicknessRange: [250, 700], iridescenceThicknessMap: tex.thick, iridescenceMap: tex.iri,
     sheen: 0.25, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xe6e0f0),
     envMapIntensity: 1.0, fog: false,
   });
